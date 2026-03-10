@@ -1,3 +1,4 @@
+#include "base/core.h"
 struct VulkanState {
     VkInstance instance;
     VkApplicationInfo app_info;
@@ -35,9 +36,8 @@ internal u32 rvkGetTargetApiVersion(void) {
 }
 
 internal bool rvkHasInstanceExtension(Arena* arena, const char* extension_name) {
-    if (arena == nullptr || extension_name == nullptr || extension_name[0] == 0) {
-        return false;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(extension_name != nullptr);
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
@@ -46,11 +46,14 @@ internal bool rvkHasInstanceExtension(Arena* arena, const char* extension_name) 
     }
 
     u64 arena_mark = arena->mark();
+    defer {
+        arena->restore(arena_mark);
+    };
+
     VkExtensionProperties* extensions = arena->push<VkExtensionProperties>(extension_count);
 
     result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions);
     if (result != VK_SUCCESS) {
-        arena->restore(arena_mark);
         return false;
     }
 
@@ -62,7 +65,6 @@ internal bool rvkHasInstanceExtension(Arena* arena, const char* extension_name) 
         }
     }
 
-    arena->restore(arena_mark);
     return found;
 }
 
@@ -81,9 +83,8 @@ internal Array<const char*> rvkGetInstanceExtensions(Arena* arena) {
 }
 
 internal bool rvkHasLayer(Arena* arena, const char* layer_name) {
-    if (arena == nullptr || layer_name == nullptr || layer_name[0] == 0) {
-        return false;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(layer_name != nullptr);
 
     u32 layer_count = 0;
     VkResult result = vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
@@ -92,11 +93,14 @@ internal bool rvkHasLayer(Arena* arena, const char* layer_name) {
     }
 
     u64 arena_mark = arena->mark();
+    defer {
+        arena->restore(arena_mark);
+    };
+
     VkLayerProperties* layers = arena->push<VkLayerProperties>(layer_count);
 
     result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
     if (result != VK_SUCCESS) {
-        arena->restore(arena_mark);
         return false;
     }
 
@@ -108,7 +112,6 @@ internal bool rvkHasLayer(Arena* arena, const char* layer_name) {
         }
     }
 
-    arena->restore(arena_mark);
     return found;
 }
 
@@ -167,9 +170,9 @@ internal bool rvkCreateDebugMessenger(void) {
 #endif
 
 internal bool rvkHasDeviceExtension(Arena* arena, VkPhysicalDevice physical_device, const char* extension_name) {
-    if (arena == nullptr || physical_device == VK_NULL_HANDLE || extension_name == nullptr || extension_name[0] == 0) {
-        return false;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(physical_device != VK_NULL_HANDLE);
+    ASSUME(extension_name != nullptr);
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, nullptr);
@@ -178,11 +181,14 @@ internal bool rvkHasDeviceExtension(Arena* arena, VkPhysicalDevice physical_devi
     }
 
     u64 arena_mark = arena->mark();
+    defer {
+        arena->restore(arena_mark);
+    };
+
     VkExtensionProperties* extensions = arena->push<VkExtensionProperties>(extension_count);
 
     result = vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, extensions);
     if (result != VK_SUCCESS) {
-        arena->restore(arena_mark);
         return false;
     }
 
@@ -194,14 +200,12 @@ internal bool rvkHasDeviceExtension(Arena* arena, VkPhysicalDevice physical_devi
         }
     }
 
-    arena->restore(arena_mark);
     return found;
 }
 
 internal bool rvkSupportsDynamicRendering(Arena* arena, VkPhysicalDevice physical_device) {
-    if (physical_device == VK_NULL_HANDLE) {
-        return false;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(physical_device != VK_NULL_HANDLE);
 
     VkPhysicalDeviceProperties properties = {};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
@@ -237,9 +241,8 @@ internal bool rvkIsDeviceSuitable(Arena* arena, VkPhysicalDevice physical_device
 }
 
 internal u32 rvkScoreDevice(Arena* arena, VkPhysicalDevice physical_device) {
-    if (arena == nullptr || physical_device == VK_NULL_HANDLE) {
-        return 0;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(physical_device != VK_NULL_HANDLE);
 
     if (!rvkSupportsDynamicRendering(arena, physical_device)) {
         return 0;
@@ -271,9 +274,9 @@ internal u32 rvkScoreDevice(Arena* arena, VkPhysicalDevice physical_device) {
 }
 
 internal bool rvkFindGraphicsQueueFamily(Arena* arena, VkPhysicalDevice physical_device, u32* out_queue_family_index) {
-    if (arena == nullptr || physical_device == VK_NULL_HANDLE || out_queue_family_index == nullptr) {
-        return false;
-    }
+    ASSUME(arena != nullptr);
+    ASSUME(physical_device != VK_NULL_HANDLE);
+    ASSUME(out_queue_family_index != nullptr);
 
     u32 queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
@@ -282,6 +285,10 @@ internal bool rvkFindGraphicsQueueFamily(Arena* arena, VkPhysicalDevice physical
     }
 
     u64 arena_mark = arena->mark();
+    defer {
+        arena->restore(arena_mark);
+    };
+
     VkQueueFamilyProperties* queue_families = arena->push<VkQueueFamilyProperties>(queue_family_count);
 
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families);
@@ -297,7 +304,6 @@ internal bool rvkFindGraphicsQueueFamily(Arena* arena, VkPhysicalDevice physical
         break;
     }
 
-    arena->restore(arena_mark);
     return found;
 }
 
@@ -311,11 +317,14 @@ internal bool rvkPickPhysicalDevice(Arena* arena) {
     }
 
     u64 arena_mark = arena->mark();
+    defer {
+        arena->restore(arena_mark);
+    };
+
     VkPhysicalDevice* physical_devices = arena->push<VkPhysicalDevice>(physical_device_count);
 
     result = vkEnumeratePhysicalDevices(vk_state.instance, &physical_device_count, physical_devices);
     if (result != VK_SUCCESS) {
-        arena->restore(arena_mark);
         return false;
     }
 
@@ -336,7 +345,6 @@ internal bool rvkPickPhysicalDevice(Arena* arena) {
         vk_state.physical_device = physical_devices[i];
     }
 
-    arena->restore(arena_mark);
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
@@ -444,6 +452,13 @@ internal bool rvkCreateRenderer(Arena* arena) {
         rvkDestroyRenderer();
     }
 
+    bool created_renderer = false;
+    defer {
+        if (!created_renderer && vk_state.instance != VK_NULL_HANDLE) {
+            rvkDestroyRenderer();
+        }
+    };
+
     VkApplicationInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     info.pApplicationName = "Unammed Game";
@@ -504,6 +519,7 @@ internal bool rvkCreateRenderer(Arena* arena) {
     }
 
     vk_state.initialized = true;
+    created_renderer = true;
     return true;
 }
 

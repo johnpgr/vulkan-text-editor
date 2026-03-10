@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdlib.h>
-
 #if defined(__clang__)
 #define COMPILER_CLANG 1
 #else
@@ -56,11 +54,11 @@
 #if COMPILER_MSVC
 #define ASSUME(expr) __assume(expr)
 #elif COMPILER_CLANG || COMPILER_GCC
-#define ASSUME(expr)                                                           \
-    do {                                                                       \
-        if (!(expr)) {                                                         \
-            __builtin_unreachable();                                           \
-        }                                                                      \
+#define ASSUME(expr)                                                                                                   \
+    do {                                                                                                               \
+        if (!(expr)) {                                                                                                 \
+            __builtin_unreachable();                                                                                   \
+        }                                                                                                              \
     } while (0)
 #else
 #define ASSUME(expr) ((void)0)
@@ -79,16 +77,39 @@ inline void debugBreak() {
 }
 
 #ifndef NDEBUG
-#define assert(expr, msg)                                                      \
-    do {                                                                       \
-        if (!(expr)) {                                                         \
-            LOG_FATAL("assertion failed: %s - %s", #expr, msg);                \
-            debugBreak();                                                      \
-        }                                                                      \
+#define assert(expr, msg)                                                                                              \
+    do {                                                                                                               \
+        if (!(expr)) {                                                                                                 \
+            LOG_FATAL("assertion failed: %s - %s", #expr, msg);                                                        \
+            debugBreak();                                                                                              \
+        }                                                                                                              \
     } while (0)
 #else
 #define assert(expr, msg) ((void)sizeof((expr) ? true : false))
 #endif
+
+template <typename F> struct Defer {
+    Defer(F f) : f(f) {
+    }
+    ~Defer() {
+        f();
+    }
+    F f;
+};
+
+template <typename F> Defer<F> makeDefer(F f) {
+    return Defer<F>(f);
+};
+
+#define CG_DEFER_NAME_IMPL(line) defer_##line
+#define CG_DEFER_NAME(line) CG_DEFER_NAME_IMPL(line)
+
+struct defer_dummy {};
+template <typename F> Defer<F> operator+(defer_dummy, F&& f) {
+    return makeDefer<F>(std::forward<F>(f));
+}
+
+#define defer auto CG_DEFER_NAME(__LINE__) = defer_dummy() + [&]()
 
 inline bool isPow2(u64 value) {
     return value != 0 && (value & (value - 1)) == 0;

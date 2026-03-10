@@ -43,9 +43,11 @@ internal xcb_atom_t pwInternAtomLinux(const char* name) {
     if (!reply) {
         return XCB_ATOM_NONE;
     }
+    defer {
+        free(reply);
+    };
 
     xcb_atom_t atom = reply->atom;
-    free(reply);
     return atom;
 }
 

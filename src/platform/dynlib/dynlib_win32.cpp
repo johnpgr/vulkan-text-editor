@@ -10,10 +10,13 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     String filename = strConcat(arena, strConcat(arena, pdlGetLibraryPrefix(), name), pdlGetLibraryExtension());
     wchar_t* wide_filename = pToWideStringWin32(scratch, filename);
     if (!wide_filename) {
-        scratch->restore(scratch_mark);
         *out_library = {};
         return false;
     }
@@ -44,7 +47,6 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     }
 
     if (!module) {
-        scratch->restore(scratch_mark);
         *out_library = {};
         return false;
     }
@@ -55,7 +57,6 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     out_library->internal_data_size = sizeof(HMODULE);
     out_library->watch_id = 0;
     out_library->functions = ArrayList<DynLibFn>::make(arena);
-    scratch->restore(scratch_mark);
     return true;
 }
 
@@ -85,10 +86,13 @@ void* pdlLoadFunction(String name, DynLib* library) {
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     const char* symbol_name = name.toCStr(scratch);
     FARPROC symbol = GetProcAddress((HMODULE)library->internal_data, symbol_name);
     if (!symbol) {
-        scratch->restore(scratch_mark);
         return nullptr;
     }
 
@@ -96,7 +100,6 @@ void* pdlLoadFunction(String name, DynLib* library) {
     function.name = String::copy(library->arena, name);
     function.pfn = (void*)symbol;
     library->functions.push(function);
-    scratch->restore(scratch_mark);
     return function.pfn;
 }
 

@@ -3,33 +3,43 @@
 PlatformErrorCode pfsCopyFile(String source, String dest, bool overwrite_if_exists) {
     Arena* scratch = pGetScratchLinux();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     const char* source_path = source.toCStr(scratch);
     const char* dest_path = dest.toCStr(scratch);
 
-    int source_fd = open(source_path, O_RDONLY);
+    int source_fd = -1;
+    defer {
+        if (source_fd >= 0) {
+            close(source_fd);
+        }
+    };
+
+    int dest_fd = -1;
+    defer {
+        if (dest_fd >= 0) {
+            close(dest_fd);
+        }
+    };
+
+    source_fd = open(source_path, O_RDONLY);
     if (source_fd < 0) {
-        PlatformErrorCode result = pfsGetCopyErrorLinux(errno);
-        scratch->restore(scratch_mark);
-        return result;
+        return pfsGetCopyErrorLinux(errno);
     }
 
     struct stat source_stat = {};
     if (fstat(source_fd, &source_stat) != 0) {
-        PlatformErrorCode result = pfsGetCopyErrorLinux(errno);
-        close(source_fd);
-        scratch->restore(scratch_mark);
-        return result;
+        return pfsGetCopyErrorLinux(errno);
     }
 
     int dest_flags = O_WRONLY | O_CREAT;
     dest_flags |= overwrite_if_exists ? O_TRUNC : O_EXCL;
 
-    int dest_fd = open(dest_path, dest_flags, source_stat.st_mode);
+    dest_fd = open(dest_path, dest_flags, source_stat.st_mode);
     if (dest_fd < 0) {
-        PlatformErrorCode result = pfsGetCopyErrorLinux(errno);
-        close(source_fd);
-        scratch->restore(scratch_mark);
-        return result;
+        return pfsGetCopyErrorLinux(errno);
     }
 
     PlatformErrorCode result = PlatformErrorCode::PLATFORM_ERROR_SUCCESS;
@@ -58,9 +68,5 @@ PlatformErrorCode pfsCopyFile(String source, String dest, bool overwrite_if_exis
             break;
         }
     }
-
-    close(dest_fd);
-    close(source_fd);
-    scratch->restore(scratch_mark);
     return result;
 }

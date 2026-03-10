@@ -55,6 +55,9 @@ internal bool pvkHasInstanceExtensionMacOS(const char* extension_name) {
     if (extensions == nullptr) {
         return false;
     }
+    defer {
+        free(extensions);
+    };
 
     result = vkEnumerateInstanceExtensionProperties(
         nullptr,
@@ -62,7 +65,6 @@ internal bool pvkHasInstanceExtensionMacOS(const char* extension_name) {
         extensions
     );
     if (result != VK_SUCCESS) {
-        free(extensions);
         return false;
     }
 
@@ -73,8 +75,6 @@ internal bool pvkHasInstanceExtensionMacOS(const char* extension_name) {
             break;
         }
     }
-
-    free(extensions);
     return found;
 }
 

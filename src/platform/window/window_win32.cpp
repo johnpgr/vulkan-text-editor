@@ -18,9 +18,12 @@ void pwCreateWindow(String title, int width, int height) {
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     wchar_t* wide_title = pToWideStringWin32(scratch, title.size > 0 ? title : String::lit("cpp-gaming"));
     if (!wide_title) {
-        scratch->restore(scratch_mark);
         pFail("Window title conversion failed.");
     }
 
@@ -42,7 +45,6 @@ void pwCreateWindow(String title, int width, int height) {
         win32_state.instance,
         nullptr
     );
-    scratch->restore(scratch_mark);
 
     if (!win32_state.window) {
         DWORD error = GetLastError();
@@ -97,14 +99,16 @@ void pwSetWindowTitle(String title) {
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     wchar_t* wide_title = pToWideStringWin32(scratch, title);
     if (!wide_title) {
-        scratch->restore(scratch_mark);
         return;
     }
 
     SetWindowTextW(win32_state.window, wide_title);
-    scratch->restore(scratch_mark);
 }
 
 void pwGetWindowSize(int* width, int* height) {

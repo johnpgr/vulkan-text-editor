@@ -21,6 +21,10 @@ bool pdlLoadLibrary(
     const char* filename_cstr = (const char*)filename.str;
     Arena* scratch = pGetScratchMacOS();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     char executable_dir[PATH_MAX] = {};
     bool have_executable_dir =
         pGetExecutableDirMacOS(executable_dir, sizeof(executable_dir));
@@ -49,7 +53,6 @@ bool pdlLoadLibrary(
     }
 
     if (!handle) {
-        scratch->restore(scratch_mark);
         *out_library = {};
         return false;
     }
@@ -60,7 +63,6 @@ bool pdlLoadLibrary(
     out_library->internal_data_size = sizeof(void*);
     out_library->watch_id = 0;
     out_library->functions = ArrayList<DynLibFn>::make(arena);
-    scratch->restore(scratch_mark);
     return true;
 }
 
@@ -93,12 +95,15 @@ void* pdlLoadFunction(String name, DynLib* library) {
 
     Arena* scratch = pGetScratchMacOS();
     u64 scratch_mark = scratch->mark();
+    defer {
+        scratch->restore(scratch_mark);
+    };
+
     const char* symbol_name = name.toCStr(scratch);
     dlerror();
     void* symbol = dlsym(library->internal_data, symbol_name);
     const char* error = dlerror();
     if (error != nullptr || !symbol) {
-        scratch->restore(scratch_mark);
         return nullptr;
     }
 
@@ -106,7 +111,6 @@ void* pdlLoadFunction(String name, DynLib* library) {
     function.name = String::copy(library->arena, name);
     function.pfn = symbol;
     library->functions.push(function);
-    scratch->restore(scratch_mark);
     return symbol;
 }
 

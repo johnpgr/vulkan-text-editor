@@ -32,7 +32,7 @@ case "$UNAME_S" in
   Linux)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.so"
     GAME_LINK_FLAGS="-shared -fPIC"
-    MAIN_LINK_FLAGS="-lxcb -ldl"
+    MAIN_LINK_FLAGS="-lvulkan -lxcb -ldl"
     ;;
   Darwin)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.dylib"
@@ -48,7 +48,7 @@ case "$UNAME_S" in
   *)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.so"
     GAME_LINK_FLAGS="-shared -fPIC"
-    MAIN_LINK_FLAGS="-lxcb -ldl"
+    MAIN_LINK_FLAGS="-lvulkan -lxcb -ldl"
     ;;
 esac
 
