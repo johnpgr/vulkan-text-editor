@@ -11,12 +11,8 @@ ArrayList<const char*> pvkGetInstanceExtensions(Arena* arena) {
     return extensions;
 }
 
-bool pvkCreateSurface(
-    VkInstance instance,
-    VkSurfaceKHR* out_surface
-) {
-    if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
-        linux_state.connection == nullptr ||
+bool pvkCreateSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+    if (instance == VK_NULL_HANDLE || out_surface == nullptr || linux_state.connection == nullptr ||
         linux_state.window == XCB_WINDOW_NONE) {
         return false;
     }
@@ -28,6 +24,5 @@ bool pvkCreateSurface(
     create_info.connection = linux_state.connection;
     create_info.window = linux_state.window;
 
-    return vkCreateXcbSurfaceKHR(instance, &create_info, nullptr, out_surface) ==
-           VK_SUCCESS;
+    return vkCreateXcbSurfaceKHR(instance, &create_info, nullptr, out_surface) == VK_SUCCESS;
 }

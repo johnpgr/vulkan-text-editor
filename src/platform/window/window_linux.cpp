@@ -6,8 +6,7 @@ void pwCreateWindow(String title, int width, int height) {
     }
 
     linux_state.connection = xcb_connect(nullptr, nullptr);
-    if (!linux_state.connection ||
-        xcb_connection_has_error(linux_state.connection) != 0) {
+    if (!linux_state.connection || xcb_connection_has_error(linux_state.connection) != 0) {
         LOG_FATAL("Failed to connect to the X server.");
         abort();
     }
@@ -45,8 +44,7 @@ void pwCreateWindow(String title, int width, int height) {
         value_list
     );
 
-    xcb_generic_error_t* create_error =
-        xcb_request_check(linux_state.connection, create_cookie);
+    xcb_generic_error_t* create_error = xcb_request_check(linux_state.connection, create_cookie);
     if (create_error) {
         free(create_error);
         xcb_disconnect(linux_state.connection);
@@ -60,8 +58,7 @@ void pwCreateWindow(String title, int width, int height) {
     linux_state.net_wm_name = pwInternAtomLinux("_NET_WM_NAME");
     linux_state.utf8_string = pwInternAtomLinux("UTF8_STRING");
 
-    if (linux_state.wm_protocols != XCB_ATOM_NONE &&
-        linux_state.wm_delete_window != XCB_ATOM_NONE) {
+    if (linux_state.wm_protocols != XCB_ATOM_NONE && linux_state.wm_delete_window != XCB_ATOM_NONE) {
         xcb_change_property(
             linux_state.connection,
             XCB_PROP_MODE_REPLACE,
@@ -108,17 +105,14 @@ void pwPollEvents(void) {
         u8 response_type = (u8)(event->response_type & 0x7f);
         switch (response_type) {
             case XCB_CLIENT_MESSAGE: {
-                xcb_client_message_event_t* client_message =
-                    (xcb_client_message_event_t*)event;
+                xcb_client_message_event_t* client_message = (xcb_client_message_event_t*)event;
                 if (client_message->type == linux_state.wm_protocols &&
-                    client_message->data.data32[0] ==
-                        linux_state.wm_delete_window) {
+                    client_message->data.data32[0] == linux_state.wm_delete_window) {
                     linux_state.should_close = true;
                 }
             } break;
             case XCB_CONFIGURE_NOTIFY: {
-                xcb_configure_notify_event_t* configure =
-                    (xcb_configure_notify_event_t*)event;
+                xcb_configure_notify_event_t* configure = (xcb_configure_notify_event_t*)event;
                 linux_state.width = configure->width;
                 linux_state.height = configure->height;
             } break;
@@ -178,8 +172,7 @@ void pwPresentWindow(void) {
 }
 
 void pwShowWindow(void) {
-    if (!linux_state.initialized || linux_state.visible ||
-        linux_state.window == XCB_WINDOW_NONE) {
+    if (!linux_state.initialized || linux_state.visible || linux_state.window == XCB_WINDOW_NONE) {
         return;
     }
 

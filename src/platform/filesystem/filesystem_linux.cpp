@@ -1,10 +1,6 @@
 #include "platform/linux/internal.h"
 
-PlatformErrorCode pfsCopyFile(
-    String source,
-    String dest,
-    bool overwrite_if_exists
-) {
+PlatformErrorCode pfsCopyFile(String source, String dest, bool overwrite_if_exists) {
     Arena* scratch = pGetScratchLinux();
     u64 scratch_mark = scratch->mark();
     const char* source_path = source.toCStr(scratch);
@@ -50,11 +46,7 @@ PlatformErrorCode pfsCopyFile(
 
         ssize_t total_written = 0;
         while (total_written < bytes_read) {
-            ssize_t bytes_written = write(
-                dest_fd,
-                buffer + total_written,
-                (size_t)(bytes_read - total_written)
-            );
+            ssize_t bytes_written = write(dest_fd, buffer + total_written, (size_t)(bytes_read - total_written));
             if (bytes_written < 0) {
                 result = pfsGetCopyErrorLinux(errno);
                 break;

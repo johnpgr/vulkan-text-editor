@@ -1,10 +1,6 @@
 #include "platform/linux/internal.h"
 
-bool pdlLoadLibrary(
-    Arena* arena,
-    String name,
-    DynLib* out_library
-) {
+bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     if (!arena || !out_library || name.size == 0) {
         return false;
     }
@@ -12,33 +8,26 @@ bool pdlLoadLibrary(
     *out_library = {};
     out_library->arena = arena;
 
-    String filename = strConcat(
-        arena,
-        strConcat(arena, pdlGetLibraryPrefix(), name),
-        pdlGetLibraryExtension()
-    );
+    String filename = strConcat(arena, strConcat(arena, pdlGetLibraryPrefix(), name), pdlGetLibraryExtension());
 
     const char* filename_cstr = (const char*)filename.str;
     Arena* scratch = pGetScratchLinux();
     u64 scratch_mark = scratch->mark();
     char executable_dir[PATH_MAX] = {};
-    bool have_executable_dir =
-        pGetExecutableDirLinux(executable_dir, sizeof(executable_dir));
+    bool have_executable_dir = pGetExecutableDirLinux(executable_dir, sizeof(executable_dir));
     char cwd[PATH_MAX] = {};
     bool have_cwd = getcwd(cwd, sizeof(cwd)) != nullptr;
     void* handle = nullptr;
 
     if (have_executable_dir) {
-        String resolved_path =
-            String::fmt(scratch, "%s/%s", executable_dir, filename_cstr);
+        String resolved_path = String::fmt(scratch, "%s/%s", executable_dir, filename_cstr);
         if (pdlTryLoadLibraryLinux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
     if (!handle && have_cwd) {
-        String resolved_path =
-            String::fmt(scratch, "%s/%s", cwd, filename_cstr);
+        String resolved_path = String::fmt(scratch, "%s/%s", cwd, filename_cstr);
         if (pdlTryLoadLibraryLinux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
@@ -78,14 +67,11 @@ bool pdlUnloadLibrary(DynLib* library) {
 }
 
 void* pdlLoadFunction(String name, DynLib* library) {
-    if (!library || !library->internal_data || !library->arena ||
-        name.size == 0) {
+    if (!library || !library->internal_data || !library->arena || name.size == 0) {
         return nullptr;
     }
 
-    for (ArrayListNode<DynLibFn>* node = library->functions.first;
-         node != nullptr;
-         node = node->next) {
+    for (ArrayListNode<DynLibFn>* node = library->functions.first; node != nullptr; node = node->next) {
         if (node->value.name.equals(name)) {
             return node->value.pfn;
         }
@@ -102,9 +88,7 @@ void* pdlLoadFunction(String name, DynLib* library) {
         LOG_DEBUG(
             "Failed to load symbol '%s' from '%s': %s",
             symbol_name,
-            library->filename.str != nullptr
-                ? (const char*)library->filename.str
-                : "<unknown>",
+            library->filename.str != nullptr ? (const char*)library->filename.str : "<unknown>",
             error != nullptr ? error : "symbol not found"
         );
         scratch->restore(scratch_mark);

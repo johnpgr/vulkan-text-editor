@@ -1,10 +1,6 @@
 #include "platform/win32/internal.h"
 
-bool pdlLoadLibrary(
-    Arena* arena,
-    String name,
-    DynLib* out_library
-) {
+bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     if (!arena || !out_library || name.size == 0) {
         return false;
     }
@@ -14,11 +10,7 @@ bool pdlLoadLibrary(
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
-    String filename = strConcat(
-        arena,
-        strConcat(arena, pdlGetLibraryPrefix(), name),
-        pdlGetLibraryExtension()
-    );
+    String filename = strConcat(arena, strConcat(arena, pdlGetLibraryPrefix(), name), pdlGetLibraryExtension());
     wchar_t* wide_filename = pToWideStringWin32(scratch, filename);
     if (!wide_filename) {
         scratch->restore(scratch_mark);
@@ -30,17 +22,9 @@ bool pdlLoadLibrary(
     wchar_t path_buffer[MAX_PATH] = {};
     if (pGetExecutableDirWin32(path_buffer, MAX_PATH)) {
         wchar_t candidate[MAX_PATH] = {};
-        _snwprintf_s(
-            candidate,
-            MAX_PATH,
-            _TRUNCATE,
-            L"%ls\\%ls",
-            path_buffer,
-            wide_filename
-        );
+        _snwprintf_s(candidate, MAX_PATH, _TRUNCATE, L"%ls\\%ls", path_buffer, wide_filename);
         if (pdlTryLoadLibraryWin32(candidate, &module)) {
-            out_library->filename =
-                pFromWidePathWin32(arena, scratch, candidate);
+            out_library->filename = pFromWidePathWin32(arena, scratch, candidate);
         }
     }
 
@@ -48,17 +32,9 @@ bool pdlLoadLibrary(
         DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH, path_buffer);
         if (cwd_length > 0 && cwd_length < MAX_PATH) {
             wchar_t candidate[MAX_PATH] = {};
-            _snwprintf_s(
-                candidate,
-                MAX_PATH,
-                _TRUNCATE,
-                L"%ls\\%ls",
-                path_buffer,
-                wide_filename
-            );
+            _snwprintf_s(candidate, MAX_PATH, _TRUNCATE, L"%ls\\%ls", path_buffer, wide_filename);
             if (pdlTryLoadLibraryWin32(candidate, &module)) {
-                out_library->filename =
-                    pFromWidePathWin32(arena, scratch, candidate);
+                out_library->filename = pFromWidePathWin32(arena, scratch, candidate);
             }
         }
     }
@@ -97,14 +73,11 @@ bool pdlUnloadLibrary(DynLib* library) {
 }
 
 void* pdlLoadFunction(String name, DynLib* library) {
-    if (!library || !library->internal_data || !library->arena ||
-        name.size == 0) {
+    if (!library || !library->internal_data || !library->arena || name.size == 0) {
         return nullptr;
     }
 
-    for (ArrayListNode<DynLibFn>* node = library->functions.first;
-         node != nullptr;
-         node = node->next) {
+    for (ArrayListNode<DynLibFn>* node = library->functions.first; node != nullptr; node = node->next) {
         if (node->value.name.equals(name)) {
             return node->value.pfn;
         }
@@ -113,8 +86,7 @@ void* pdlLoadFunction(String name, DynLib* library) {
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
     const char* symbol_name = name.toCStr(scratch);
-    FARPROC symbol =
-        GetProcAddress((HMODULE)library->internal_data, symbol_name);
+    FARPROC symbol = GetProcAddress((HMODULE)library->internal_data, symbol_name);
     if (!symbol) {
         scratch->restore(scratch_mark);
         return nullptr;

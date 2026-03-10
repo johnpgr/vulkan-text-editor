@@ -35,29 +35,14 @@ internal Arena* pGetScratchWin32(void) {
 
 internal wchar_t* pToWideStringWin32(Arena* scratch, String text) {
     int utf8_length = (int)text.size;
-    int wide_length = MultiByteToWideChar(
-        CP_UTF8,
-        0,
-        (const char*)text.str,
-        utf8_length,
-        nullptr,
-        0
-    );
+    int wide_length = MultiByteToWideChar(CP_UTF8, 0, (const char*)text.str, utf8_length, nullptr, 0);
     if (wide_length <= 0) {
         return nullptr;
     }
 
-    wchar_t* result =
-        scratch->push<wchar_t>((u64)wide_length + 1, alignof(wchar_t));
+    wchar_t* result = scratch->push<wchar_t>((u64)wide_length + 1, alignof(wchar_t));
 
-    int written = MultiByteToWideChar(
-        CP_UTF8,
-        0,
-        (const char*)text.str,
-        utf8_length,
-        result,
-        wide_length
-    );
+    int written = MultiByteToWideChar(CP_UTF8, 0, (const char*)text.str, utf8_length, result, wide_length);
     if (written != wide_length) {
         return nullptr;
     }
@@ -80,10 +65,7 @@ internal bool pGetExecutableDirWin32(wchar_t* buffer, DWORD buffer_count) {
     return true;
 }
 
-internal bool pdlTryLoadLibraryWin32(
-    const wchar_t* path,
-    HMODULE* out_library
-) {
+internal bool pdlTryLoadLibraryWin32(const wchar_t* path, HMODULE* out_library) {
     assert(path != nullptr, "Library path must not be null!");
     assert(out_library != nullptr, "Output library must not be null!");
 
@@ -104,8 +86,7 @@ internal DWORD pwGetWindowStyleWin32(void) {
     return style;
 }
 
-internal LRESULT CALLBACK
-pwWindowProcWin32(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+internal LRESULT CALLBACK pwWindowProcWin32(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
         case WM_CLOSE:
             win32_state.should_close = true;
@@ -145,24 +126,13 @@ internal bool pwRegisterWindowClassWin32(void) {
     return win32_state.class_registered;
 }
 
-internal String
-pFromWidePathWin32(Arena* arena, Arena* scratch, const wchar_t* path) {
-    int utf8_length =
-        WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
+internal String pFromWidePathWin32(Arena* arena, Arena* scratch, const wchar_t* path) {
+    int utf8_length = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
     assert(utf8_length > 0, "Wide to UTF-8 conversion failed!");
 
     char* buffer = scratch->push<char>((u64)utf8_length, alignof(char));
 
-    int written = WideCharToMultiByte(
-        CP_UTF8,
-        0,
-        path,
-        -1,
-        buffer,
-        utf8_length,
-        nullptr,
-        nullptr
-    );
+    int written = WideCharToMultiByte(CP_UTF8, 0, path, -1, buffer, utf8_length, nullptr, nullptr);
     assert(written == utf8_length, "Wide to UTF-8 conversion failed!");
 
     return String::copy(arena, String::fromCStr(buffer));

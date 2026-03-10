@@ -10,12 +10,9 @@ ArrayList<const char*> pvkGetInstanceExtensions(Arena* arena) {
     return extensions;
 }
 
-bool pvkCreateSurface(
-    VkInstance instance,
-    VkSurfaceKHR* out_surface
-) {
-    if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
-        win32_state.instance == nullptr || win32_state.window == nullptr) {
+bool pvkCreateSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+    if (instance == VK_NULL_HANDLE || out_surface == nullptr || win32_state.instance == nullptr ||
+        win32_state.window == nullptr) {
         return false;
     }
 
@@ -26,7 +23,6 @@ bool pvkCreateSurface(
     create_info.hinstance = win32_state.instance;
     create_info.hwnd = win32_state.window;
 
-    VkResult result =
-        vkCreateWin32SurfaceKHR(instance, &create_info, nullptr, out_surface);
+    VkResult result = vkCreateWin32SurfaceKHR(instance, &create_info, nullptr, out_surface);
     return result == VK_SUCCESS;
 }

@@ -12,19 +12,13 @@ void pwCreateWindow(String title, int width, int height) {
 
     if (!pwRegisterWindowClassWin32()) {
         DWORD error = GetLastError();
-        LOG_FATAL(
-            "RegisterClassExW failed with error %lu",
-            (unsigned long)error
-        );
+        LOG_FATAL("RegisterClassExW failed with error %lu", (unsigned long)error);
         abort();
     }
 
     Arena* scratch = pGetScratchWin32();
     u64 scratch_mark = scratch->mark();
-    wchar_t* wide_title = pToWideStringWin32(
-        scratch,
-        title.size > 0 ? title : String::lit("cpp-gaming")
-    );
+    wchar_t* wide_title = pToWideStringWin32(scratch, title.size > 0 ? title : String::lit("cpp-gaming"));
     if (!wide_title) {
         scratch->restore(scratch_mark);
         pFail("Window title conversion failed.");
@@ -52,10 +46,7 @@ void pwCreateWindow(String title, int width, int height) {
 
     if (!win32_state.window) {
         DWORD error = GetLastError();
-        LOG_FATAL(
-            "CreateWindowExW failed with error %lu",
-            (unsigned long)error
-        );
+        LOG_FATAL("CreateWindowExW failed with error %lu", (unsigned long)error);
         abort();
     }
 
@@ -169,8 +160,7 @@ void pwSetWindowResizable(bool resizable) {
         0,
         0,
         0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
-            SWP_FRAMECHANGED
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
     );
 }
 
@@ -181,8 +171,7 @@ void pwPresentWindow(void) {
 }
 
 void pwShowWindow(void) {
-    if (!win32_state.initialized || win32_state.visible ||
-        !win32_state.window) {
+    if (!win32_state.initialized || win32_state.visible || !win32_state.window) {
         return;
     }
 

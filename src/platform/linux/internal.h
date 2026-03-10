@@ -38,10 +38,8 @@ internal xcb_screen_t* pwGetDefaultScreenLinux(xcb_connection_t* connection) {
 }
 
 internal xcb_atom_t pwInternAtomLinux(const char* name) {
-    xcb_intern_atom_cookie_t cookie =
-        xcb_intern_atom(linux_state.connection, 0, (u16)strlen(name), name);
-    xcb_intern_atom_reply_t* reply =
-        xcb_intern_atom_reply(linux_state.connection, cookie, nullptr);
+    xcb_intern_atom_cookie_t cookie = xcb_intern_atom(linux_state.connection, 0, (u16)strlen(name), name);
+    xcb_intern_atom_reply_t* reply = xcb_intern_atom_reply(linux_state.connection, cookie, nullptr);
     if (!reply) {
         return XCB_ATOM_NONE;
     }
@@ -69,8 +67,7 @@ internal void pwApplyWindowTitleLinux(String title) {
         effective_title.str
     );
 
-    if (linux_state.net_wm_name != XCB_ATOM_NONE &&
-        linux_state.utf8_string != XCB_ATOM_NONE) {
+    if (linux_state.net_wm_name != XCB_ATOM_NONE && linux_state.utf8_string != XCB_ATOM_NONE) {
         xcb_change_property(
             linux_state.connection,
             XCB_PROP_MODE_REPLACE,
@@ -85,8 +82,7 @@ internal void pwApplyWindowTitleLinux(String title) {
 }
 
 internal void pwDestroyNativeWindowLinux(void) {
-    if (linux_state.connection != nullptr &&
-        linux_state.window != XCB_WINDOW_NONE) {
+    if (linux_state.connection != nullptr && linux_state.window != XCB_WINDOW_NONE) {
         xcb_destroy_window(linux_state.connection, linux_state.window);
         xcb_flush(linux_state.connection);
         linux_state.window = XCB_WINDOW_NONE;
