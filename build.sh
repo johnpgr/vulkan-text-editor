@@ -5,11 +5,14 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 FLAGS_FILE="$ROOT_DIR/compile_flags.txt"
 MAIN_SOURCE_FILE="$ROOT_DIR/src/main.cpp"
+MACOS_PLATFORM_SOURCE_FILE="$ROOT_DIR/src/platform/platform_macos.mm"
 GAME_SOURCE_FILE="$ROOT_DIR/src/game.cpp"
 BUILD_DIR="$ROOT_DIR/build"
 MODE="${BUILD_MODE:-debug}"
 MAIN_LINK_FLAGS=""
-MAIN_EXTRA_FLAGS=""
+MAIN_SOURCE_FLAGS=""
+VULKAN_INCLUDE_FLAGS=""
+VULKAN_LINK_FLAGS=""
 
 if [[ $# -gt 0 ]]; then
   case "$1" in
@@ -34,7 +37,7 @@ case "$UNAME_S" in
   Darwin)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.dylib"
     GAME_LINK_FLAGS="-dynamiclib -fPIC"
-    MAIN_EXTRA_FLAGS='-x objective-c++ "'"$MAIN_SOURCE_FILE"'" -x none'
+    MAIN_SOURCE_FLAGS="\"$MAIN_SOURCE_FILE\" \"$MACOS_PLATFORM_SOURCE_FILE\""
     MAIN_LINK_FLAGS="-framework AppKit -framework Foundation -framework QuartzCore -ldl"
     ;;
   MINGW*|MSYS*|CYGWIN*)
@@ -48,6 +51,25 @@ case "$UNAME_S" in
     MAIN_LINK_FLAGS="-lxcb -ldl"
     ;;
 esac
+
+if [[ "$UNAME_S" == "Darwin" ]]; then
+  VULKAN_SDK_ROOT="/usr/local"
+  VULKAN_INCLUDE_DIR="$VULKAN_SDK_ROOT/include"
+  VULKAN_LIB_DIR="$VULKAN_SDK_ROOT/lib"
+
+  if [[ ! -d "$VULKAN_INCLUDE_DIR/vulkan" ]]; then
+    echo "Missing Vulkan headers at hardcoded macOS path: $VULKAN_INCLUDE_DIR" >&2
+    exit 1
+  fi
+
+  if [[ ! -f "$VULKAN_LIB_DIR/libvulkan.dylib" ]]; then
+    echo "Missing Vulkan loader at hardcoded macOS path: $VULKAN_LIB_DIR/libvulkan.dylib" >&2
+    exit 1
+  fi
+
+  VULKAN_INCLUDE_FLAGS="-I$VULKAN_INCLUDE_DIR"
+  VULKAN_LINK_FLAGS="-L$VULKAN_LIB_DIR -lvulkan -Wl,-rpath,$VULKAN_LIB_DIR"
+fi
 
 if [[ ! -f "$FLAGS_FILE" ]]; then
   echo "Missing compile flags file: $FLAGS_FILE" >&2
@@ -64,6 +86,11 @@ if [[ ! -f "$GAME_SOURCE_FILE" ]]; then
   exit 1
 fi
 
+if [[ "$UNAME_S" == "Darwin" && ! -f "$MACOS_PLATFORM_SOURCE_FILE" ]]; then
+  echo "Missing source file: $MACOS_PLATFORM_SOURCE_FILE" >&2
+  exit 1
+fi
+
 FLAG_LINES="$(sed -E 's/[[:space:]]*#.*$//; /^[[:space:]]*$/d' "$FLAGS_FILE")"
 
 if [[ "$MODE" == "release" ]]; then
@@ -74,6 +101,8 @@ else
 fi
 
 FLAGS="$(printf '%s\n' "$FLAG_LINES" | tr '\n' ' ')"
+FLAGS="$FLAGS $VULKAN_INCLUDE_FLAGS"
+MAIN_LINK_FLAGS="$MAIN_LINK_FLAGS $VULKAN_LINK_FLAGS"
 
 mkdir -p "$BUILD_DIR"
 
@@ -83,7 +112,7 @@ if [[ "$UNAME_S" == "Darwin" ]]; then
   eval "$COMPILER \
     ${CPPFLAGS:-} ${CFLAGS:-} ${CXXFLAGS:-} \
     $FLAGS $MODE_FLAGS \
-    $MAIN_EXTRA_FLAGS \
+    $MAIN_SOURCE_FLAGS \
     ${LDFLAGS:-} $MAIN_LINK_FLAGS \
     -o \"$OUTPUT_FILE\""
 else

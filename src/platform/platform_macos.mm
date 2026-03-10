@@ -1,14 +1,21 @@
+#include "base/defines.h"
+
 #if OS_MAC
 
+#pragma push_macro("internal")
+#undef internal
 #include <AppKit/AppKit.h>
 #include <Foundation/Foundation.h>
 #include <QuartzCore/QuartzCore.h>
+#include <QuartzCore/CAMetalLayer.h>
 #include <copyfile.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <unistd.h>
+#include <vulkan/vulkan_metal.h>
+#pragma pop_macro("internal")
 
 struct MacPlatformState {
     NSApplication* application;
@@ -25,6 +32,50 @@ struct MacPlatformState {
 internal MacPlatformState mac_state = {};
 internal Arena mac_scratch_arena = {};
 internal bool mac_scratch_initialized = false;
+
+internal bool mac_vulkan_has_instance_extension(const char* extension_name) {
+    if (extension_name == nullptr || extension_name[0] == 0) {
+        return false;
+    }
+
+    u32 extension_count = 0;
+    VkResult result = vkEnumerateInstanceExtensionProperties(
+        nullptr,
+        &extension_count,
+        nullptr
+    );
+    if (result != VK_SUCCESS || extension_count == 0) {
+        return false;
+    }
+
+    VkExtensionProperties* extensions = (VkExtensionProperties*)malloc(
+        (size_t)extension_count * sizeof(VkExtensionProperties)
+    );
+    if (extensions == nullptr) {
+        return false;
+    }
+
+    result = vkEnumerateInstanceExtensionProperties(
+        nullptr,
+        &extension_count,
+        extensions
+    );
+    if (result != VK_SUCCESS) {
+        free(extensions);
+        return false;
+    }
+
+    bool found = false;
+    for (u32 i = 0; i < extension_count; i++) {
+        if (strcmp(extensions[i].extensionName, extension_name) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    free(extensions);
+    return found;
+}
 
 @interface CppGamingWindowDelegate : NSObject <NSWindowDelegate>
 @end
@@ -277,6 +328,78 @@ void platform_window_show(void) {
         [mac_state.application activateIgnoringOtherApps:YES];
         mac_state.visible = true;
     }
+}
+
+ArrayList<const char*> platform_vulkan_get_instance_extensions(Arena* arena) {
+    ASSUME(arena != nullptr);
+
+    ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
+    extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
+
+    if (mac_vulkan_has_instance_extension(VK_EXT_METAL_SURFACE_EXTENSION_NAME)) {
+        extensions.push(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+    }
+
+    if (mac_vulkan_has_instance_extension(
+            VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+        )) {
+        extensions.push(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+    }
+
+    return extensions;
+}
+
+bool platform_vulkan_create_surface(
+    VkInstance instance,
+    VkSurfaceKHR* out_surface
+) {
+    if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
+        mac_state.window == nil) {
+        return false;
+    }
+
+    NSView* content_view = [mac_state.window contentView];
+    if (content_view == nil) {
+        return false;
+    }
+
+    CAMetalLayer* layer = nil;
+    if ([[content_view layer] isKindOfClass:[CAMetalLayer class]]) {
+        layer = (CAMetalLayer*)[content_view layer];
+    } else {
+        layer = [CAMetalLayer layer];
+        [content_view setWantsLayer:YES];
+        [content_view setLayer:layer];
+    }
+
+    if (layer == nil) {
+        return false;
+    }
+
+    CGFloat scale = [mac_state.window backingScaleFactor];
+    layer.contentsScale = scale;
+    layer.frame = [content_view bounds];
+    NSSize view_size = [content_view bounds].size;
+    layer.drawableSize =
+        CGSizeMake(view_size.width * scale, view_size.height * scale);
+
+    PFN_vkCreateMetalSurfaceEXT create_metal_surface =
+        (PFN_vkCreateMetalSurfaceEXT)vkGetInstanceProcAddr(
+            instance,
+            "vkCreateMetalSurfaceEXT"
+        );
+    if (create_metal_surface == nullptr) {
+        return false;
+    }
+
+    *out_surface = VK_NULL_HANDLE;
+
+    VkMetalSurfaceCreateInfoEXT create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+    create_info.pLayer = layer;
+
+    return create_metal_surface(instance, &create_info, nullptr, out_surface) ==
+           VK_SUCCESS;
 }
 
 void platform_audio_init(void) {

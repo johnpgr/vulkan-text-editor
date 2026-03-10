@@ -15,6 +15,8 @@ internal VulkanState vk_state = {};
 internal const char* renderer_vulkan_validation_layer_name =
     "VK_LAYER_KHRONOS_validation";
 #endif
+internal const char* renderer_vulkan_portability_subset_extension_name =
+    "VK_KHR_portability_subset";
 
 internal bool renderer_vulkan_find_graphics_queue_family(
     Arena* arena,
@@ -452,21 +454,46 @@ internal bool renderer_vulkan_create_device(Arena* arena) {
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = &graphics_queue_priority;
 
+    bool needs_dynamic_rendering_extension =
+        properties.apiVersion < VK_API_VERSION_1_3;
+    bool needs_portability_subset_extension =
+        renderer_vulkan_is_device_ext_available(
+            arena,
+            vk_state.physical_device,
+            renderer_vulkan_portability_subset_extension_name
+        );
+
+    if (needs_dynamic_rendering_extension &&
+        !renderer_vulkan_is_device_ext_available(
+            arena,
+            vk_state.physical_device,
+            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+        )) {
+        return false;
+    }
+
+    u32 device_extension_count = 0;
+    if (needs_dynamic_rendering_extension) {
+        device_extension_count += 1;
+    }
+    if (needs_portability_subset_extension) {
+        device_extension_count += 1;
+    }
+
     Array<const char*> device_extensions = {};
-    const char* dynamic_rendering_extension_name =
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
-    if (properties.apiVersion < VK_API_VERSION_1_3) {
-        if (!renderer_vulkan_is_device_ext_available(
-                arena,
-                vk_state.physical_device,
-                dynamic_rendering_extension_name
-            )) {
-            return false;
+    if (device_extension_count > 0) {
+        device_extensions =
+            Array<const char*>::make(arena, device_extension_count);
+
+        if (needs_dynamic_rendering_extension) {
+            device_extensions.items[device_extensions.count++] =
+                VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
         }
 
-        device_extensions = Array<const char*>::make(arena, 1);
-        device_extensions.items[0] = dynamic_rendering_extension_name;
-        device_extensions.count = 1;
+        if (needs_portability_subset_extension) {
+            device_extensions.items[device_extensions.count++] =
+                renderer_vulkan_portability_subset_extension_name;
+        }
     }
 
     VkPhysicalDeviceVulkan13Features features13 = {};
@@ -547,7 +574,7 @@ internal bool renderer_vulkan_init(Arena* arena) {
     info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     info.pEngineName = "No Engine";
     info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    info.apiVersion = VK_API_VERSION_1_4;
+    info.apiVersion = VK_API_VERSION_1_3;
     vk_state.app_info = info;
 
     Array<const char*> extensions = renderer_vulkan_instance_extensions(arena);
@@ -571,6 +598,13 @@ internal bool renderer_vulkan_init(Arena* arena) {
     create_info.ppEnabledExtensionNames = extensions.items;
     create_info.enabledLayerCount = layers.count;
     create_info.ppEnabledLayerNames = layers.items;
+    if (renderer_vulkan_is_ext_available(
+            arena,
+            VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+        )) {
+        create_info.flags |=
+            VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    }
 #ifndef NDEBUG
     VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {};
     if (renderer_vulkan_is_ext_available(

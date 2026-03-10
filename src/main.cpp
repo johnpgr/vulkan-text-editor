@@ -5,7 +5,6 @@
 #include "platform/platform_linux.cpp"
 #elif OS_MAC
 #include "memory/memory_macos.cpp"
-#include "platform/platform_macos.cpp"
 #elif OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include "memory/memory_win32.cpp"
