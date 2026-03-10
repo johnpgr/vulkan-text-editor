@@ -7,6 +7,9 @@
 #define GB (MB * KB)
 #define TB (GB * KB)
 
+#define WIDTH 800
+#define HEIGHT 600
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -14,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <vulkan/vulkan.h>
 
 #include "base/typedef.h"
 #include "base/log.h"

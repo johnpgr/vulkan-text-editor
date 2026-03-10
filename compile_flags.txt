@@ -2,6 +2,7 @@
 
 # Includes
 -Isrc
+-IC:/VulkanSDK/1.4.341.1/Include
 
 # Warnings
 -Wall

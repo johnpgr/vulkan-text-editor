@@ -33,10 +33,18 @@ if defined CXX (
   set "COMPILER=clang++"
 )
 
+if defined VULKAN_SDK (
+  set "VULKAN_SDK_DIR=%VULKAN_SDK%"
+) else (
+  set "VULKAN_SDK_DIR=C:\VulkanSDK\1.4.341.1"
+)
+
 set "GAME_OUTPUT_FILE=%BUILD_DIR%\game.dll"
 set "GAME_LINK_FLAGS=-shared"
 set "MAIN_LINK_FLAGS=-lgdi32 -luser32"
 set "WINDOWS_RUNTIME_FLAGS=-fms-runtime-lib=dll"
+set VULKAN_COMPILE_FLAGS=-DVK_USE_PLATFORM_WIN32_KHR
+set VULKAN_LINK_FLAGS=-L"%VULKAN_SDK_DIR%\Lib" -lvulkan-1
 
 if not exist "%FLAGS_FILE%" (
   >&2 echo Missing compile flags file: %FLAGS_FILE%
@@ -50,6 +58,16 @@ if not exist "%MAIN_SOURCE_FILE%" (
 
 if not exist "%GAME_SOURCE_FILE%" (
   >&2 echo Missing source file: %GAME_SOURCE_FILE%
+  exit /b 1
+)
+
+if not exist "%VULKAN_SDK_DIR%\Include\vulkan\vulkan.h" (
+  >&2 echo Missing Vulkan headers: %VULKAN_SDK_DIR%\Include\vulkan\vulkan.h
+  exit /b 1
+)
+
+if not exist "%VULKAN_SDK_DIR%\Lib\vulkan-1.lib" (
+  >&2 echo Missing Vulkan import library: %VULKAN_SDK_DIR%\Lib\vulkan-1.lib
   exit /b 1
 )
 
@@ -80,10 +98,10 @@ for /f "usebackq tokens=* delims=" %%L in ("%FLAGS_FILE%") do (
   )
 )
 
-call "%COMPILER%" %CPPFLAGS% %CFLAGS% %CXXFLAGS% %WINDOWS_RUNTIME_FLAGS% !FLAGS! %MODE_FLAGS% "%MAIN_SOURCE_FILE%" %LDFLAGS% %MAIN_LINK_FLAGS% -o "%OUTPUT_FILE%"
+call "%COMPILER%" %CPPFLAGS% %CFLAGS% %CXXFLAGS% %WINDOWS_RUNTIME_FLAGS% %VULKAN_COMPILE_FLAGS% !FLAGS! %MODE_FLAGS% "%MAIN_SOURCE_FILE%" %LDFLAGS% %MAIN_LINK_FLAGS% %VULKAN_LINK_FLAGS% -o "%OUTPUT_FILE%"
 if errorlevel 1 exit /b %errorlevel%
 
-call "%COMPILER%" %CPPFLAGS% %CFLAGS% %CXXFLAGS% %WINDOWS_RUNTIME_FLAGS% !FLAGS! %MODE_FLAGS% "%GAME_SOURCE_FILE%" %LDFLAGS% %GAME_LINK_FLAGS% -o "%GAME_OUTPUT_FILE%"
+call "%COMPILER%" %CPPFLAGS% %CFLAGS% %CXXFLAGS% %WINDOWS_RUNTIME_FLAGS% %VULKAN_COMPILE_FLAGS% !FLAGS! %MODE_FLAGS% "%GAME_SOURCE_FILE%" %LDFLAGS% %GAME_LINK_FLAGS% %VULKAN_LINK_FLAGS% -o "%GAME_OUTPUT_FILE%"
 if errorlevel 1 exit /b %errorlevel%
 
 echo Built (%MODE%): %OUTPUT_FILE%

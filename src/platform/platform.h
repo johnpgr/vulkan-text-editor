@@ -112,6 +112,27 @@ void platform_window_present(void);
 void platform_window_show(void);
 
 /**
+ * @brief Returns the Vulkan instance extensions required by the active
+ * platform window backend.
+ *
+ * The returned array is arena-backed and can be passed directly to
+ * VkInstanceCreateInfo::ppEnabledExtensionNames.
+ */
+ArrayList<const char*> platform_vulkan_get_instance_extensions(Arena* arena);
+
+/**
+ * @brief Creates a Vulkan surface for the active platform window.
+ *
+ * @param instance The Vulkan instance that owns the new surface.
+ * @param out_surface Pointer that receives the created Vulkan surface.
+ * @return true on success, false otherwise.
+ */
+bool platform_vulkan_create_surface(
+    VkInstance instance,
+    VkSurfaceKHR* out_surface
+);
+
+/**
  * @brief Initializes the audio system.
  * @param game A pointer to the game instance.
  */

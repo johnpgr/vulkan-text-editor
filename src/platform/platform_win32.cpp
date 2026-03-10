@@ -1,6 +1,9 @@
 #if OS_WINDOWS
 
 #include <windows.h>
+#include <vulkan/vulkan_win32.h>
+
+#define VULKAN_EXTENSION_COUNT 2
 
 struct Win32PlatformState {
     HINSTANCE instance;
@@ -136,7 +139,7 @@ internal bool win32_register_window_class(void) {
     window_class.lpfnWndProc = win32_window_proc;
     window_class.hInstance = win32_state.instance;
     window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-    window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     window_class.lpszClassName = L"cpp_gaming_window_class";
 
     win32_state.window_class = RegisterClassExW(&window_class);
@@ -188,7 +191,7 @@ void platform_window_init(String title, int width, int height) {
         platform_window_cleanup();
     }
 
-    win32_state.resizable = true;
+    win32_state.resizable = false;
     win32_state.width = width;
     win32_state.height = height;
     win32_state.should_close = false;
@@ -372,6 +375,37 @@ void platform_window_show(void) {
     ShowWindow(win32_state.window, SW_SHOW);
     UpdateWindow(win32_state.window);
     win32_state.visible = true;
+}
+
+ArrayList<const char*> platform_vulkan_get_instance_extensions(Arena* arena) {
+    ASSUME(arena != nullptr);
+
+    ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
+    extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
+    extensions.push(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+
+    return extensions;
+}
+
+bool platform_vulkan_create_surface(
+    VkInstance instance,
+    VkSurfaceKHR* out_surface
+) {
+    if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
+        win32_state.instance == nullptr || win32_state.window == nullptr) {
+        return false;
+    }
+
+    *out_surface = VK_NULL_HANDLE;
+
+    VkWin32SurfaceCreateInfoKHR create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    create_info.hinstance = win32_state.instance;
+    create_info.hwnd = win32_state.window;
+
+    VkResult result =
+        vkCreateWin32SurfaceKHR(instance, &create_info, nullptr, out_surface);
+    return result == VK_SUCCESS;
 }
 
 void platform_audio_init(void) {

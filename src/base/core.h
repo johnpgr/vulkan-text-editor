@@ -39,14 +39,8 @@
 #define OS_LINUX 0
 #endif
 
-#if OS_WINDOWS
-#define MAIN                                                                \
-    int WINAPI WinMain(                                                     \
-        HINSTANCE,                                                          \
-        HINSTANCE,                                                          \
-        LPSTR,                                                              \
-        int                                                                 \
-    )
+#if OS_WINDOWS && defined(NDEBUG)
+#define MAIN int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
 #define MAIN int main(int, char**)
 #endif
@@ -58,6 +52,19 @@
 #endif
 
 #define IS_TRIVIAL_TYPE(T) (__is_trivial(T) && __is_trivially_copyable(T))
+
+#if COMPILER_MSVC
+#define ASSUME(expr) __assume(expr)
+#elif COMPILER_CLANG || COMPILER_GCC
+#define ASSUME(expr)                                                           \
+    do {                                                                       \
+        if (!(expr)) {                                                         \
+            __builtin_unreachable();                                           \
+        }                                                                      \
+    } while (0)
+#else
+#define ASSUME(expr) ((void)0)
+#endif
 
 inline void debug_break() {
 #if COMPILER_MSVC
@@ -84,7 +91,7 @@ inline void debug_break() {
 #define assert_msg(expr, msg)                                                  \
     do {                                                                       \
         if (!(expr)) {                                                         \
-            log_fatal("assertion failed: %s — %s", #expr, msg);                \
+            log_fatal("assertion failed: %s - %s", #expr, msg);                \
             debug_break();                                                     \
         }                                                                      \
     } while (0)

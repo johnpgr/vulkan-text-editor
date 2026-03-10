@@ -14,17 +14,29 @@
 #error "Unsupported platform"
 #endif
 
+#include "renderer/vulkan.cpp"
+
 typedef int (*GameTestSymbolFn)(void);
 
 MAIN {
+    (void)renderer_vulkan_draw_frame;
+
     Arena global_arena = Arena::make();
-    platform_window_init("Unnammed game", 1024, 768);
+    platform_window_init("Unnammed game", WIDTH, HEIGHT);
+    platform_window_set_resizable(true);
+
+    if (!renderer_vulkan_init(&global_arena)) {
+        global_arena.release();
+        return -1;
+    };
+
     platform_window_show();
 
     while (!platform_window_should_close()) {
         platform_window_poll_events();
     }
 
+    renderer_vulkan_cleanup();
     global_arena.release();
     return 0;
 }
