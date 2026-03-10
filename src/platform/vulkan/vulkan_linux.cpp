@@ -1,3 +1,4 @@
+#include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
 
 #include "platform/linux/internal.h"

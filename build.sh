@@ -93,6 +93,14 @@ fi
 
 FLAG_LINES="$(sed -E 's/[[:space:]]*#.*$//; /^[[:space:]]*$/d' "$FLAGS_FILE")"
 
+if [[ "$UNAME_S" != "Darwin" ]]; then
+  FLAG_LINES="$(printf '%s\n' "$FLAG_LINES" | awk '
+    skip_next { skip_next = 0; next }
+    $0 == "-isysroot" { skip_next = 1; next }
+    { print }
+  ')"
+fi
+
 if [[ "$MODE" == "release" ]]; then
   FLAG_LINES="$(printf '%s\n' "$FLAG_LINES" | sed -E '/^-fsanitize(=|$)/d')"
   MODE_FLAGS="-O3 -DNDEBUG"

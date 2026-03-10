@@ -1,5 +1,3 @@
-#include "base/defines.h"
-
 #if OS_LINUX
 
 #include "platform/window/window_linux.cpp"

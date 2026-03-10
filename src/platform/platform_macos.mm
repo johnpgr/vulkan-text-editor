@@ -1,5 +1,3 @@
-#include "base/defines.h"
-
 #if OS_MAC
 
 #include "platform/window/window_macos.mm"
