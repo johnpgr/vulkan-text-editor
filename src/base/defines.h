@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "base/typedef.h"
 #include "base/log.h"
@@ -22,4 +23,5 @@
 #include "base/arena.h"
 #include "base/string.h"
 #include "base/array.h"
+#include "base/math.h"
 #include "platform/platform.h"
