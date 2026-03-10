@@ -1,50 +1,29 @@
 #include "base/defines.h"
 
-#if OS_WINDOWS
-#include "platform/platform_win32.cpp"
-#elif OS_LINUX
+#if OS_LINUX
+#include "memory/memory_linux.cpp"
 #include "platform/platform_linux.cpp"
 #elif OS_MAC
+#include "memory/memory_macos.cpp"
 #include "platform/platform_macos.cpp"
+#elif OS_WINDOWS
+#define WIN32_LEAN_AND_MEAN
+#include "memory/memory_win32.cpp"
+#include "platform/platform_win32.cpp"
 #else
+#error "Unsupported platform"
 #endif
 
-#if OS_WINDOWS
-int WINAPI WinMain(
-    HINSTANCE hInstance,
-    HINSTANCE hPrevInstance,
-    LPSTR lpCmdLine,
-    int nShowCmd
-) {
-    (void)hInstance;
-    (void)hPrevInstance;
-    (void)lpCmdLine;
-    (void)nShowCmd;
-#else
-int main(int argc, char* argv[]) {
-#endif
-    (void)argc;
-    (void)argv;
+typedef int (*GameTestSymbolFn)(void);
 
+MAIN {
     Arena global_arena = Arena::make();
+    platform_window_init("Unnammed game", 1024, 768);
+    platform_window_show();
 
-    ArrayList<i32> list = ArrayList<i32>::make(&global_arena);
-    list.push(42);
-    list.push(7);
-    Array<i32> arr = list.to_array();
-    i32 sum = 0;
-    for (i32 value : arr) {
-        sum += value;
+    while (!platform_window_should_close()) {
+        platform_window_poll_events();
     }
-
-    String greeting = String::lit("Hello, world!");
-
-    log_info(
-        "%s (%d items, sum=%d)",
-        greeting.to_cstr(&global_arena),
-        (int)arr.count,
-        sum
-    );
 
     global_arena.release();
     return 0;

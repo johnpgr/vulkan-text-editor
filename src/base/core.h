@@ -39,6 +39,24 @@
 #define OS_LINUX 0
 #endif
 
+#if OS_WINDOWS
+#define MAIN                                                                \
+    int WINAPI WinMain(                                                     \
+        HINSTANCE,                                                          \
+        HINSTANCE,                                                          \
+        LPSTR,                                                              \
+        int                                                                 \
+    )
+#else
+#define MAIN int main(int, char**)
+#endif
+
+#if OS_WINDOWS
+#define EXPORT extern "C" __declspec(dllexport)
+#else
+#define EXPORT extern "C"
+#endif
+
 #define IS_TRIVIAL_TYPE(T) (__is_trivial(T) && __is_trivially_copyable(T))
 
 inline void debug_break() {

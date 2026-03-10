@@ -8,6 +8,8 @@ MAIN_SOURCE_FILE="$ROOT_DIR/src/main.cpp"
 GAME_SOURCE_FILE="$ROOT_DIR/src/game.cpp"
 BUILD_DIR="$ROOT_DIR/build"
 MODE="${BUILD_MODE:-debug}"
+MAIN_LINK_FLAGS=""
+MAIN_EXTRA_FLAGS=""
 
 if [[ $# -gt 0 ]]; then
   case "$1" in
@@ -27,18 +29,23 @@ case "$UNAME_S" in
   Linux)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.so"
     GAME_LINK_FLAGS="-shared -fPIC"
+    MAIN_LINK_FLAGS="-lxcb -ldl"
     ;;
   Darwin)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.dylib"
     GAME_LINK_FLAGS="-dynamiclib -fPIC"
+    MAIN_EXTRA_FLAGS='-x objective-c++ "'"$MAIN_SOURCE_FILE"'" -x none'
+    MAIN_LINK_FLAGS="-framework AppKit -framework Foundation -framework QuartzCore -ldl"
     ;;
   MINGW*|MSYS*|CYGWIN*)
     GAME_OUTPUT_FILE="$BUILD_DIR/game.dll"
     GAME_LINK_FLAGS="-shared"
+    MAIN_LINK_FLAGS="-lgdi32"
     ;;
   *)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.so"
     GAME_LINK_FLAGS="-shared -fPIC"
+    MAIN_LINK_FLAGS="-lxcb -ldl"
     ;;
 esac
 
@@ -70,14 +77,25 @@ FLAGS="$(printf '%s\n' "$FLAG_LINES" | tr '\n' ' ')"
 
 mkdir -p "$BUILD_DIR"
 
-# Intentionally uses normal shell expansion of env flags from your shell profile.
-# shellcheck disable=SC2086
-$COMPILER \
-  ${CPPFLAGS:-} ${CFLAGS:-} ${CXXFLAGS:-} \
-  $FLAGS $MODE_FLAGS \
-  "$MAIN_SOURCE_FILE" \
-  ${LDFLAGS:-} \
-  -o "$OUTPUT_FILE"
+if [[ "$UNAME_S" == "Darwin" ]]; then
+  # Intentionally uses normal shell expansion of env flags from your shell profile.
+  # shellcheck disable=SC2086
+  eval "$COMPILER \
+    ${CPPFLAGS:-} ${CFLAGS:-} ${CXXFLAGS:-} \
+    $FLAGS $MODE_FLAGS \
+    $MAIN_EXTRA_FLAGS \
+    ${LDFLAGS:-} $MAIN_LINK_FLAGS \
+    -o \"$OUTPUT_FILE\""
+else
+  # Intentionally uses normal shell expansion of env flags from your shell profile.
+  # shellcheck disable=SC2086
+  $COMPILER \
+    ${CPPFLAGS:-} ${CFLAGS:-} ${CXXFLAGS:-} \
+    $FLAGS $MODE_FLAGS \
+    "$MAIN_SOURCE_FILE" \
+    ${LDFLAGS:-} $MAIN_LINK_FLAGS \
+    -o "$OUTPUT_FILE"
+fi
 
 $COMPILER \
   ${CPPFLAGS:-} ${CFLAGS:-} ${CXXFLAGS:-} \

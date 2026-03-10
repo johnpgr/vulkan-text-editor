@@ -1,5 +1,7 @@
 #pragma once
 
+#define internal static
+
 #define KB 1024ULL
 #define MB (KB * KB)
 #define GB (MB * KB)
@@ -16,6 +18,8 @@
 #include "base/log.h"
 #include "base/core.h"
 
+#include "memory/memory.h"
 #include "base/arena.h"
-#include "base/array.h"
 #include "base/string.h"
+#include "base/array.h"
+#include "platform/platform.h"

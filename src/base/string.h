@@ -13,6 +13,13 @@ struct String {
         return result;
     }
 
+    // Create from a null-terminated C string without taking ownership.
+    static String from_cstr(const char* s) {
+        assert_msg(s != nullptr, "String source must not be null!");
+        String result = {(const u8*)s, (u64)strlen(s)};
+        return result;
+    }
+
     // Create a copy in an arena: String s = String::copy(arena, other_string);
     static String copy(Arena* arena, String source) {
         String result = {};
@@ -21,7 +28,7 @@ struct String {
         bool size_overflow =
             u64_add_overflow(source.size, 1ULL, &buffer_size);
         assert_msg(!size_overflow, "String copy size overflow!");
-        u8* buffer = arena->push<u8>(buffer_size); // +1 for null terminator
+        u8* buffer = arena->push<u8>(buffer_size);
         if (source.size > 0) {
             assert_msg(source.str != nullptr, "String source must not be null!");
             memcpy(buffer, source.str, source.size);
@@ -29,6 +36,10 @@ struct String {
         buffer[source.size] = 0;
         result.str = buffer;
         return result;
+    }
+
+    static String copy_cstr(Arena* arena, const char* source) {
+        return copy(arena, from_cstr(source));
     }
 
     // Format into an arena: String s = String::format(arena, "Score: %d", 10);
