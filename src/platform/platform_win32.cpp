@@ -79,7 +79,10 @@ internal bool win32_executable_dir(wchar_t* buffer, DWORD buffer_count) {
     return true;
 }
 
-internal bool win32_try_load_library(const wchar_t* path, HMODULE* out_library) {
+internal bool win32_try_load_library(
+    const wchar_t* path,
+    HMODULE* out_library
+) {
     assert_msg(path != nullptr, "Library path must not be null!");
     assert_msg(out_library != nullptr, "Output library must not be null!");
 
@@ -132,7 +135,7 @@ internal bool win32_register_window_class(void) {
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = win32_window_proc;
     window_class.hInstance = win32_state.instance;
-    window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     window_class.lpszClassName = L"cpp_gaming_window_class";
 
@@ -141,21 +144,10 @@ internal bool win32_register_window_class(void) {
     return win32_state.class_registered;
 }
 
-internal String win32_wide_path_to_string(
-    Arena* arena,
-    Arena* scratch,
-    const wchar_t* path
-) {
-    int utf8_length = WideCharToMultiByte(
-        CP_UTF8,
-        0,
-        path,
-        -1,
-        nullptr,
-        0,
-        nullptr,
-        nullptr
-    );
+internal String
+win32_wide_path_to_string(Arena* arena, Arena* scratch, const wchar_t* path) {
+    int utf8_length =
+        WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
     assert_msg(utf8_length > 0, "Wide to UTF-8 conversion failed!");
 
     char* buffer = scratch->push<char>((u64)utf8_length, alignof(char));
@@ -323,8 +315,7 @@ void platform_window_set_size(int width, int height) {
 
     RECT rect = {0, 0, width, height};
     DWORD style = (DWORD)GetWindowLongPtrW(win32_state.window, GWL_STYLE);
-    DWORD ex_style =
-        (DWORD)GetWindowLongPtrW(win32_state.window, GWL_EXSTYLE);
+    DWORD ex_style = (DWORD)GetWindowLongPtrW(win32_state.window, GWL_EXSTYLE);
     AdjustWindowRectEx(&rect, style, FALSE, ex_style);
 
     SetWindowPos(
@@ -426,8 +417,14 @@ bool platform_dynamic_library_load(
     wchar_t path_buffer[MAX_PATH] = {};
     if (win32_executable_dir(path_buffer, MAX_PATH)) {
         wchar_t candidate[MAX_PATH] = {};
-        _snwprintf(candidate, MAX_PATH, L"%ls\\%ls", path_buffer, wide_filename);
-        candidate[MAX_PATH - 1] = 0;
+        _snwprintf_s(
+            candidate,
+            MAX_PATH,
+            _TRUNCATE,
+            L"%ls\\%ls",
+            path_buffer,
+            wide_filename
+        );
         if (win32_try_load_library(candidate, &module)) {
             out_library->filename =
                 win32_wide_path_to_string(arena, scratch, candidate);
@@ -438,14 +435,14 @@ bool platform_dynamic_library_load(
         DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH, path_buffer);
         if (cwd_length > 0 && cwd_length < MAX_PATH) {
             wchar_t candidate[MAX_PATH] = {};
-            _snwprintf(
+            _snwprintf_s(
                 candidate,
                 MAX_PATH,
+                _TRUNCATE,
                 L"%ls\\%ls",
                 path_buffer,
                 wide_filename
             );
-            candidate[MAX_PATH - 1] = 0;
             if (win32_try_load_library(candidate, &module)) {
                 out_library->filename =
                     win32_wide_path_to_string(arena, scratch, candidate);
