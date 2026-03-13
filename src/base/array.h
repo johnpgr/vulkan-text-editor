@@ -11,7 +11,7 @@ template <typename T> struct Array {
             IS_TRIVIAL_TYPE(T),
             "Array only supports trivial, trivially copyable types"
         );
-        assert(arena != nullptr, "Array arena must not be null!");
+        ASSERT(arena != nullptr, "Array arena must not be null!");
 
         Array<T> arr = {};
         arr.arena = arena;
@@ -26,15 +26,15 @@ template <typename T> struct Array {
             IS_TRIVIAL_TYPE(T),
             "Array only supports trivial, trivially copyable types"
         );
-        assert(arena != nullptr, "Array arena must not be null!");
-        assert(
+        ASSERT(arena != nullptr, "Array arena must not be null!");
+        ASSERT(
             source_count <= capacity,
             "Array copy source count exceeds array capacity!"
         );
 
         Array<T> arr = make(arena, capacity);
         if (source_count > 0) {
-            assert(
+            ASSERT(
                 source != nullptr,
                 "Array copy source must not be null!"
             );
@@ -45,12 +45,12 @@ template <typename T> struct Array {
     }
 
     T& operator[](u64 i) {
-        assert(i < count, "Array index out of range!");
+        ASSERT(i < count, "Array index out of range!");
         return items[i];
     }
 
     const T& operator[](u64 i) const {
-        assert(i < count, "Array index out of range!");
+        ASSERT(i < count, "Array index out of range!");
         return items[i];
     }
 
@@ -91,7 +91,7 @@ template <typename T> struct ArrayList {
             IS_TRIVIAL_TYPE(T),
             "ArrayList only supports trivial, trivially copyable types"
         );
-        assert(arena != nullptr, "ArrayList arena must not be null!");
+        ASSERT(arena != nullptr, "ArrayList arena must not be null!");
         ArrayList<T> list = {};
         list.arena = arena;
         return list;
@@ -102,7 +102,7 @@ template <typename T> struct ArrayList {
             IS_TRIVIAL_TYPE(T),
             "ArrayList only supports trivial, trivially copyable types"
         );
-        assert(arena != nullptr, "ArrayList arena must not be null!");
+        ASSERT(arena != nullptr, "ArrayList arena must not be null!");
 
         ArrayListNode<T>* node = arena->push<ArrayListNode<T>>();
         node->value = value;
@@ -115,8 +115,8 @@ template <typename T> struct ArrayList {
         }
         last = node;
         u64 new_count = 0;
-        bool count_overflow = u64AddOverflow(count, 1ULL, &new_count);
-        assert(!count_overflow, "ArrayList count overflow!");
+        bool count_overflow = U64AddOverflow(count, 1ULL, &new_count);
+        ASSERT(!count_overflow, "ArrayList count overflow!");
         count = new_count;
         return node;
     }
@@ -126,8 +126,8 @@ template <typename T> struct ArrayList {
             IS_TRIVIAL_TYPE(T),
             "ArrayList only supports trivial, trivially copyable types"
         );
-        assert(arena != nullptr, "ArrayList arena must not be null!");
-        assert(
+        ASSERT(arena != nullptr, "ArrayList arena must not be null!");
+        ASSERT(
             count <= (u64)UINT32_MAX,
             "ArrayList count exceeds u32 max for Array capacity!"
         );
@@ -140,7 +140,7 @@ template <typename T> struct ArrayList {
             index += 1;
         }
         result.count = index;
-        assert(
+        ASSERT(
             (u64)result.count == count,
             "ArrayList count does not match node chain!"
         );

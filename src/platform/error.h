@@ -1,9 +1,13 @@
 #pragma once
 
-enum class PlatformErrorCode : u8 {
-    PLATFORM_ERROR_SUCCESS = 0,
-    PLATFORM_ERROR_UNKNOWN = 1,
-    PLATFORM_ERROR_FILE_NOT_FOUND = 2,
-    PLATFORM_ERROR_FILE_LOCKED = 3,
-    PLATFORM_ERROR_FILE_EXISTS = 4
+namespace Platform {
+
+enum class ErrorCode : u8 {
+    SUCCESS = 0,
+    UNKNOWN = 1,
+    FILE_NOT_FOUND = 2,
+    FILE_LOCKED = 3,
+    FILE_EXISTS = 4
 };
+
+}

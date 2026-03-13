@@ -9,6 +9,8 @@
 #include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
 
+namespace Platform {
+
 struct LinuxPlatformState {
     xcb_connection_t* connection;
     xcb_screen_t* screen;
@@ -29,7 +31,7 @@ internal LinuxPlatformState linux_state = {};
 internal Arena linux_scratch_arena = {};
 internal bool linux_scratch_initialized = false;
 
-internal xcb_screen_t* pwGetDefaultScreenLinux(xcb_connection_t* connection) {
+internal xcb_screen_t* GetDefaultScreenLinux(xcb_connection_t* connection) {
     const xcb_setup_t* setup = xcb_get_setup(connection);
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(setup);
     if (it.rem == 0 || !it.data) {
@@ -38,7 +40,7 @@ internal xcb_screen_t* pwGetDefaultScreenLinux(xcb_connection_t* connection) {
     return it.data;
 }
 
-internal xcb_atom_t pwInternAtomLinux(const char* name) {
+internal xcb_atom_t InternAtomLinux(const char* name) {
     xcb_intern_atom_cookie_t cookie =
         xcb_intern_atom(linux_state.connection, 0, (u16)strlen(name), name);
     xcb_intern_atom_reply_t* reply =
@@ -46,14 +48,14 @@ internal xcb_atom_t pwInternAtomLinux(const char* name) {
     if (!reply) {
         return XCB_ATOM_NONE;
     }
-    defer {
+    DEFER {
         free(reply);
     };
 
     return reply->atom;
 }
 
-internal void pwApplyWindowTitleLinux(String title) {
+internal void ApplyWindowTitleLinux(String title) {
     if (!linux_state.initialized || linux_state.window == XCB_WINDOW_NONE) {
         return;
     }
@@ -87,7 +89,7 @@ internal void pwApplyWindowTitleLinux(String title) {
     }
 }
 
-internal void pwDestroyNativeWindowLinux(void) {
+internal void DestroyNativeWindowLinux(void) {
     if (linux_state.connection != nullptr &&
         linux_state.window != XCB_WINDOW_NONE) {
         xcb_destroy_window(linux_state.connection, linux_state.window);
@@ -96,17 +98,17 @@ internal void pwDestroyNativeWindowLinux(void) {
     }
 }
 
-internal Arena* pGetScratchLinux(void) {
+internal Arena* GetScratchLinux(void) {
     if (!linux_scratch_initialized) {
-        linux_scratch_arena = Arena::make();
+        linux_scratch_arena = CreateArena();
         linux_scratch_initialized = true;
     }
     return &linux_scratch_arena;
 }
 
-internal bool pGetExecutableDirLinux(char* buffer, usize buffer_size) {
-    assert(buffer != nullptr, "Buffer must not be null!");
-    assert(buffer_size > 0, "Buffer size must be non-zero!");
+internal bool GetExecutableDirLinux(char* buffer, usize buffer_size) {
+    ASSERT(buffer != nullptr, "Buffer must not be null!");
+    ASSERT(buffer_size > 0, "Buffer size must be non-zero!");
 
     ssize_t size = readlink("/proc/self/exe", buffer, buffer_size - 1);
     if (size <= 0) {
@@ -122,9 +124,9 @@ internal bool pGetExecutableDirLinux(char* buffer, usize buffer_size) {
     return true;
 }
 
-internal bool pdlTryLoadLibraryLinux(const char* path, void** out_handle) {
-    assert(path != nullptr, "Library path must not be null!");
-    assert(out_handle != nullptr, "Output handle must not be null!");
+internal bool TryLoadDynamicLibraryLinux(const char* path, void** out_handle) {
+    ASSERT(path != nullptr, "Library path must not be null!");
+    ASSERT(out_handle != nullptr, "Output handle must not be null!");
 
     dlerror();
     void* handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -136,25 +138,25 @@ internal bool pdlTryLoadLibraryLinux(const char* path, void** out_handle) {
     return true;
 }
 
-internal PlatformErrorCode pfsGetCopyErrorLinux(int error) {
+internal ErrorCode GetCopyErrorLinux(int error) {
     switch (error) {
         case 0:
-            return PlatformErrorCode::PLATFORM_ERROR_SUCCESS;
+            return ErrorCode::SUCCESS;
         case ENOENT:
-            return PlatformErrorCode::PLATFORM_ERROR_FILE_NOT_FOUND;
+            return ErrorCode::FILE_NOT_FOUND;
         case EEXIST:
-            return PlatformErrorCode::PLATFORM_ERROR_FILE_EXISTS;
+            return ErrorCode::FILE_EXISTS;
         case EBUSY:
         case ETXTBSY:
-            return PlatformErrorCode::PLATFORM_ERROR_FILE_LOCKED;
+            return ErrorCode::FILE_LOCKED;
         default:
-            return PlatformErrorCode::PLATFORM_ERROR_UNKNOWN;
+            return ErrorCode::UNKNOWN;
     }
 }
 
-void pwCreateWindow(String title, int width, int height) {
+void CreateWindow(String title, int width, int height) {
     if (linux_state.initialized) {
-        pwDestroyWindow();
+        DestroyWindow();
     }
 
     linux_state.connection = xcb_connect(nullptr, nullptr);
@@ -164,7 +166,7 @@ void pwCreateWindow(String title, int width, int height) {
         abort();
     }
 
-    linux_state.screen = pwGetDefaultScreenLinux(linux_state.connection);
+    linux_state.screen = GetDefaultScreenLinux(linux_state.connection);
     if (!linux_state.screen) {
         xcb_disconnect(linux_state.connection);
         linux_state = {};
@@ -207,10 +209,10 @@ void pwCreateWindow(String title, int width, int height) {
         abort();
     }
 
-    linux_state.wm_protocols = pwInternAtomLinux("WM_PROTOCOLS");
-    linux_state.wm_delete_window = pwInternAtomLinux("WM_DELETE_WINDOW");
-    linux_state.net_wm_name = pwInternAtomLinux("_NET_WM_NAME");
-    linux_state.utf8_string = pwInternAtomLinux("UTF8_STRING");
+    linux_state.wm_protocols = InternAtomLinux("WM_PROTOCOLS");
+    linux_state.wm_delete_window = InternAtomLinux("WM_DELETE_WINDOW");
+    linux_state.net_wm_name = InternAtomLinux("_NET_WM_NAME");
+    linux_state.utf8_string = InternAtomLinux("UTF8_STRING");
 
     if (linux_state.wm_protocols != XCB_ATOM_NONE &&
         linux_state.wm_delete_window != XCB_ATOM_NONE) {
@@ -226,7 +228,7 @@ void pwCreateWindow(String title, int width, int height) {
         );
     }
 
-    pwApplyWindowTitleLinux(title);
+    ApplyWindowTitleLinux(title);
     xcb_flush(linux_state.connection);
 
     linux_state.should_close = false;
@@ -234,23 +236,23 @@ void pwCreateWindow(String title, int width, int height) {
     linux_state.initialized = true;
 }
 
-void pwDestroyWindow(void) {
+void DestroyWindow(void) {
     if (!linux_state.initialized) {
         return;
     }
 
-    pwDestroyNativeWindowLinux();
+    DestroyNativeWindowLinux();
     if (linux_state.connection != nullptr) {
         xcb_disconnect(linux_state.connection);
     }
     linux_state = {};
 }
 
-bool pwShouldWindowClose(void) {
+bool ShouldWindowClose(void) {
     return linux_state.should_close;
 }
 
-void pwPollEvents(void) {
+void PollEvents(void) {
     if (!linux_state.initialized || !linux_state.connection) {
         return;
     }
@@ -285,14 +287,14 @@ void pwPollEvents(void) {
     }
 }
 
-void pwSetWindowTitle(String title) {
-    pwApplyWindowTitleLinux(title);
+void SetWindowTitle(String title) {
+    ApplyWindowTitleLinux(title);
     if (linux_state.connection != nullptr) {
         xcb_flush(linux_state.connection);
     }
 }
 
-void pwGetWindowSize(int* width, int* height) {
+void GetWindowSize(int* width, int* height) {
     if (width) {
         *width = linux_state.width;
     }
@@ -301,7 +303,7 @@ void pwGetWindowSize(int* width, int* height) {
     }
 }
 
-void pwSetWindowSize(int width, int height) {
+void SetWindowSize(int width, int height) {
     if (!linux_state.initialized || linux_state.window == XCB_WINDOW_NONE) {
         return;
     }
@@ -319,17 +321,17 @@ void pwSetWindowSize(int width, int height) {
     linux_state.height = height;
 }
 
-void pwSetWindowResizable(bool resizable) {
+void SetWindowResizable(bool resizable) {
     linux_state.resizable = resizable;
 }
 
-void pwPresentWindow(void) {
+void PresentWindow(void) {
     if (linux_state.connection != nullptr) {
         xcb_flush(linux_state.connection);
     }
 }
 
-void pwShowWindow(void) {
+void ShowWindow(void) {
     if (!linux_state.initialized || linux_state.visible ||
         linux_state.window == XCB_WINDOW_NONE) {
         return;
@@ -340,20 +342,20 @@ void pwShowWindow(void) {
     linux_state.visible = true;
 }
 
-void paCreateAudio(void) {
+void CreateAudio(void) {
 }
 
-void paDestroyAudio(void) {
+void DestroyAudio(void) {
 }
 
-void paUpdateAudioBuffer(void) {
+void UpdateAudioBuffer(void) {
 }
 
-void paSetAudioVolume(f32 volume) {
+void SetAudioVolume(f32 volume) {
     (void)volume;
 }
 
-bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
+bool LoadDynamicLibrary(Arena* arena, String name, DynamicLibrary* out_library) {
     if (!arena || !out_library || name.size == 0) {
         return false;
     }
@@ -361,22 +363,22 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     *out_library = {};
     out_library->arena = arena;
 
-    String filename = strConcat(
+    String filename = StringConcat(
         arena,
-        strConcat(arena, pdlGetLibraryPrefix(), name),
-        pdlGetLibraryExtension()
+        StringConcat(arena, GetDynamicLibraryPrefix(), name),
+        GetDynamicLibraryExtension()
     );
 
-    Arena* scratch = pGetScratchLinux();
+    Arena* scratch = GetScratchLinux();
     u64 scratch_mark = scratch->mark();
-    defer {
+    DEFER {
         scratch->restore(scratch_mark);
     };
 
-    const char* filename_cstr = filename.toCStr(scratch);
+    const char* filename_cstr = filename.toCstr(scratch);
     char executable_dir[PATH_MAX] = {};
     bool have_executable_dir =
-        pGetExecutableDirLinux(executable_dir, sizeof(executable_dir));
+        GetExecutableDirLinux(executable_dir, sizeof(executable_dir));
     char cwd[PATH_MAX] = {};
     bool have_cwd = getcwd(cwd, sizeof(cwd)) != nullptr;
     void* handle = nullptr;
@@ -384,19 +386,19 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     if (have_executable_dir) {
         String resolved_path =
             String::fmt(scratch, "%s/%s", executable_dir, filename_cstr);
-        if (pdlTryLoadLibraryLinux((const char*)resolved_path.str, &handle)) {
+        if (TryLoadDynamicLibraryLinux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
     if (!handle && have_cwd) {
         String resolved_path = String::fmt(scratch, "%s/%s", cwd, filename_cstr);
-        if (pdlTryLoadLibraryLinux((const char*)resolved_path.str, &handle)) {
+        if (TryLoadDynamicLibraryLinux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
-    if (!handle && pdlTryLoadLibraryLinux(filename_cstr, &handle)) {
+    if (!handle && TryLoadDynamicLibraryLinux(filename_cstr, &handle)) {
         out_library->filename = String::copy(arena, filename);
     }
 
@@ -409,11 +411,11 @@ bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library) {
     out_library->internal_data = handle;
     out_library->internal_data_size = sizeof(void*);
     out_library->watch_id = 0;
-    out_library->functions = ArrayList<DynLibFn>::make(arena);
+    out_library->functions = ArrayList<DynamicLibraryFunction>::make(arena);
     return true;
 }
 
-bool pdlUnloadLibrary(DynLib* library) {
+bool UnloadDynamicLibrary(DynamicLibrary* library) {
     if (!library || !library->internal_data) {
         return false;
     }
@@ -426,29 +428,29 @@ bool pdlUnloadLibrary(DynLib* library) {
     return true;
 }
 
-void* pdlLoadFunction(String name, DynLib* library) {
+void* LoadDynamicFunction(String name, DynamicLibrary* library) {
     if (!library || !library->internal_data || !library->arena ||
         name.size == 0) {
         return nullptr;
     }
 
-    for (ArrayListNode<DynLibFn>* node = library->functions.first;
+    for (ArrayListNode<DynamicLibraryFunction>* node = library->functions.first;
          node != nullptr;
          node = node->next) {
         if (node->value.name.equals(name)) {
-            return node->value.pfn;
+            return node->value.function;
         }
     }
 
-    Arena* scratch = pGetScratchLinux();
+    Arena* scratch = GetScratchLinux();
     u64 scratch_mark = scratch->mark();
-    defer {
+    DEFER {
         scratch->restore(scratch_mark);
     };
 
-    const char* symbol_name = name.toCStr(scratch);
+    const char* symbol_name = name.toCstr(scratch);
     const char* filename_cstr =
-        library->filename.str != nullptr ? library->filename.toCStr(scratch) : "<unknown>";
+        library->filename.str != nullptr ? library->filename.toCstr(scratch) : "<unknown>";
     dlerror();
     void* symbol = dlsym(library->internal_data, symbol_name);
     const char* error = dlerror();
@@ -463,44 +465,44 @@ void* pdlLoadFunction(String name, DynLib* library) {
         return nullptr;
     }
 
-    DynLibFn function = {};
+    DynamicLibraryFunction function = {};
     function.name = String::copy(library->arena, name);
-    function.pfn = symbol;
+    function.function = symbol;
     library->functions.push(function);
     return symbol;
 }
 
-String pdlGetLibraryExtension(void) {
+String GetDynamicLibraryExtension(void) {
     return String::lit(".so");
 }
 
-String pdlGetLibraryPrefix(void) {
+String GetDynamicLibraryPrefix(void) {
     return String::lit("lib");
 }
 
-PlatformErrorCode pfsCopyFile(
+ErrorCode CopyFile(
     String source,
     String dest,
     bool overwrite_if_exists
 ) {
-    Arena* scratch = pGetScratchLinux();
+    Arena* scratch = GetScratchLinux();
     u64 scratch_mark = scratch->mark();
-    defer {
+    DEFER {
         scratch->restore(scratch_mark);
     };
 
-    const char* source_path = source.toCStr(scratch);
-    const char* dest_path = dest.toCStr(scratch);
+    const char* source_path = source.toCstr(scratch);
+    const char* dest_path = dest.toCstr(scratch);
 
     int source_fd = -1;
-    defer {
+    DEFER {
         if (source_fd >= 0) {
             close(source_fd);
         }
     };
 
     int dest_fd = -1;
-    defer {
+    DEFER {
         if (dest_fd >= 0) {
             close(dest_fd);
         }
@@ -508,12 +510,12 @@ PlatformErrorCode pfsCopyFile(
 
     source_fd = open(source_path, O_RDONLY);
     if (source_fd < 0) {
-        return pfsGetCopyErrorLinux(errno);
+        return GetCopyErrorLinux(errno);
     }
 
     struct stat source_stat = {};
     if (fstat(source_fd, &source_stat) != 0) {
-        return pfsGetCopyErrorLinux(errno);
+        return GetCopyErrorLinux(errno);
     }
 
     int dest_flags = O_WRONLY | O_CREAT;
@@ -521,10 +523,10 @@ PlatformErrorCode pfsCopyFile(
 
     dest_fd = open(dest_path, dest_flags, source_stat.st_mode);
     if (dest_fd < 0) {
-        return pfsGetCopyErrorLinux(errno);
+        return GetCopyErrorLinux(errno);
     }
 
-    PlatformErrorCode result = PlatformErrorCode::PLATFORM_ERROR_SUCCESS;
+    ErrorCode result = ErrorCode::SUCCESS;
     char buffer[64 * KB];
     for (;;) {
         ssize_t bytes_read = read(source_fd, buffer, sizeof(buffer));
@@ -532,7 +534,7 @@ PlatformErrorCode pfsCopyFile(
             break;
         }
         if (bytes_read < 0) {
-            result = pfsGetCopyErrorLinux(errno);
+            result = GetCopyErrorLinux(errno);
             break;
         }
 
@@ -544,13 +546,13 @@ PlatformErrorCode pfsCopyFile(
                 (size_t)(bytes_read - total_written)
             );
             if (bytes_written < 0) {
-                result = pfsGetCopyErrorLinux(errno);
+                result = GetCopyErrorLinux(errno);
                 break;
             }
             total_written += bytes_written;
         }
 
-        if (result != PlatformErrorCode::PLATFORM_ERROR_SUCCESS) {
+        if (result != ErrorCode::SUCCESS) {
             break;
         }
     }
@@ -558,7 +560,7 @@ PlatformErrorCode pfsCopyFile(
     return result;
 }
 
-ArrayList<const char*> pvkGetInstanceExtensions(Arena* arena) {
+ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena) {
     ASSUME(arena != nullptr);
 
     ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
@@ -567,7 +569,7 @@ ArrayList<const char*> pvkGetInstanceExtensions(Arena* arena) {
     return extensions;
 }
 
-bool pvkCreateSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
     if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
         linux_state.connection == nullptr ||
         linux_state.window == XCB_WINDOW_NONE) {
@@ -583,6 +585,8 @@ bool pvkCreateSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
 
     return vkCreateXcbSurfaceKHR(instance, &create_info, nullptr, out_surface) ==
            VK_SUCCESS;
+}
+
 }
 
 #endif

@@ -15,24 +15,27 @@
 typedef int (*GameTestSymbolFn)(void);
 
 MAIN {
-    (void)rvkDrawFrame;
+    (void)Renderer::DrawFrame;
 
-    Arena global_arena = Arena::make();
-    pwCreateWindow("Unnammed game", WIDTH, HEIGHT);
-    pwSetWindowResizable(true);
+    Arena global_arena = CreateArena();
+    Platform::CreateWindow("Unnammed game", WIDTH, HEIGHT);
+    Platform::SetWindowResizable(true);
 
-    if (!rvkCreateRenderer(&global_arena)) {
+    if (!Renderer::Create(&global_arena)) {
         global_arena.release();
         return -1;
     };
 
-    pwShowWindow();
+    DEFER {
+        Renderer::Destroy();
+        global_arena.release();
+    };
 
-    while (!pwShouldWindowClose()) {
-        pwPollEvents();
+    Platform::ShowWindow();
+
+    while (!Platform::ShouldWindowClose()) {
+        Platform::PollEvents();
     }
 
-    rvkDestroyRenderer();
-    global_arena.release();
     return 0;
 }

@@ -1,26 +1,30 @@
 #pragma once
 
-void pwCreateWindow(String title, int width, int height);
+namespace Platform {
 
-inline void pwCreateWindow(const char* title, int width, int height) {
-    pwCreateWindow(String::fromCStr(title), width, height);
+void CreateWindow(String title, int width, int height);
+
+inline void CreateWindow(const char* title, int width, int height) {
+    CreateWindow(String::fromCstr(title), width, height);
 }
 
-void pwDestroyWindow(void);
-bool pwShouldWindowClose(void);
-void pwPollEvents(void);
-void pwSetWindowTitle(String title);
+void DestroyWindow(void);
+bool ShouldWindowClose(void);
+void PollEvents(void);
+void SetWindowTitle(String title);
 
-template <u64 N> inline void pwSetWindowTitle(const char (&title)[N]) {
-    pwSetWindowTitle({(const u8*)title, N - 1});
+template <u64 N> inline void SetWindowTitle(const char (&title)[N]) {
+    SetWindowTitle({(const u8*)title, N - 1});
 }
 
-inline void pwSetWindowTitle(const char* title) {
-    pwSetWindowTitle(String::fromCStr(title));
+inline void SetWindowTitle(const char* title) {
+    SetWindowTitle(String::fromCstr(title));
 }
 
-void pwGetWindowSize(int* width, int* height);
-void pwSetWindowSize(int width, int height);
-void pwSetWindowResizable(bool resizable);
-void pwPresentWindow(void);
-void pwShowWindow(void);
+void GetWindowSize(int* width, int* height);
+void SetWindowSize(int width, int height);
+void SetWindowResizable(bool resizable);
+void PresentWindow(void);
+void ShowWindow(void);
+
+}

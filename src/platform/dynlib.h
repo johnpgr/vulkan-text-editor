@@ -1,11 +1,13 @@
 #pragma once
 
-struct DynLibFn {
+namespace Platform {
+
+struct DynamicLibraryFunction {
     String name;
-    void* pfn;
+    void* function;
 };
 
-struct DynLib {
+struct DynamicLibrary {
     Arena* arena;
     String name;
     String filename;
@@ -13,39 +15,48 @@ struct DynLib {
     void* internal_data;
     u32 watch_id;
 
-    ArrayList<DynLibFn> functions;
+    ArrayList<DynamicLibraryFunction> functions;
 };
 
-bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library);
+bool LoadDynamicLibrary(
+    Arena* arena,
+    String name,
+    DynamicLibrary* out_library
+);
 
 template <u64 N>
-inline bool pdlLoadLibrary(
+inline bool LoadDynamicLibrary(
     Arena* arena,
     const char (&name)[N],
-    DynLib* out_library
+    DynamicLibrary* out_library
 ) {
-    return pdlLoadLibrary(arena, {(const u8*)name, N - 1}, out_library);
+    return LoadDynamicLibrary(arena, {(const u8*)name, N - 1}, out_library);
 }
 
-inline bool pdlLoadLibrary(
+inline bool LoadDynamicLibrary(
     Arena* arena,
     const char* name,
-    DynLib* out_library
+    DynamicLibrary* out_library
 ) {
-    return pdlLoadLibrary(arena, String::fromCStr(name), out_library);
+    return LoadDynamicLibrary(arena, String::fromCstr(name), out_library);
 }
 
-bool pdlUnloadLibrary(DynLib* library);
-void* pdlLoadFunction(String name, DynLib* library);
+bool UnloadDynamicLibrary(DynamicLibrary* library);
+void* LoadDynamicFunction(String name, DynamicLibrary* library);
 
 template <u64 N>
-inline void* pdlLoadFunction(const char (&name)[N], DynLib* library) {
-    return pdlLoadFunction({(const u8*)name, N - 1}, library);
+inline void* LoadDynamicFunction(
+    const char (&name)[N],
+    DynamicLibrary* library
+) {
+    return LoadDynamicFunction({(const u8*)name, N - 1}, library);
 }
 
-inline void* pdlLoadFunction(const char* name, DynLib* library) {
-    return pdlLoadFunction(String::fromCStr(name), library);
+inline void* LoadDynamicFunction(const char* name, DynamicLibrary* library) {
+    return LoadDynamicFunction(String::fromCstr(name), library);
 }
 
-String pdlGetLibraryExtension(void);
-String pdlGetLibraryPrefix(void);
+String GetDynamicLibraryExtension(void);
+String GetDynamicLibraryPrefix(void);
+
+}
