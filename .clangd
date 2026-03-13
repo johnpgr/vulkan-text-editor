@@ -7,6 +7,15 @@ CompileFlags:
 
 ---
 
+If:
+  PathMatch: (^|.*/)src/main\\.cpp$
+CompileFlags:
+  Add:
+    - -x
+    - objective-c++
+
+---
+
 Diagnostics:
   UnusedIncludes: Strict
   ClangTidy:
