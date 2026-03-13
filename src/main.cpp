@@ -1,14 +1,11 @@
 #include "base/defines.h"
 
 #if OS_LINUX
-#include "memory/memory_linux.cpp"
-#include "platform/platform_linux.cpp"
+#include "platform/linux.cpp"
 #elif OS_MAC
-#include "memory/memory_macos.cpp"
+#include "platform/macos.mm"
 #elif OS_WINDOWS
-#define WIN32_LEAN_AND_MEAN
-#include "memory/memory_win32.cpp"
-#include "platform/platform_win32.cpp"
+#include "platform/win32.cpp"
 #else
 #error "Unsupported platform"
 #endif

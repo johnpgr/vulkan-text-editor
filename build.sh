@@ -5,7 +5,6 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 FLAGS_FILE="$ROOT_DIR/compile_flags.txt"
 MAIN_SOURCE_FILE="$ROOT_DIR/src/main.cpp"
-MACOS_PLATFORM_SOURCE_FILE="$ROOT_DIR/src/platform/platform_macos.mm"
 GAME_SOURCE_FILE="$ROOT_DIR/src/game.cpp"
 BUILD_DIR="$ROOT_DIR/build"
 MODE="${BUILD_MODE:-debug}"
@@ -37,7 +36,7 @@ case "$UNAME_S" in
   Darwin)
     GAME_OUTPUT_FILE="$BUILD_DIR/libgame.dylib"
     GAME_LINK_FLAGS="-dynamiclib -fPIC"
-    MAIN_SOURCE_FLAGS="\"$MAIN_SOURCE_FILE\" \"$MACOS_PLATFORM_SOURCE_FILE\""
+    MAIN_SOURCE_FLAGS="\"$MAIN_SOURCE_FILE\""
     MAIN_LINK_FLAGS="-framework AppKit -framework Foundation -framework QuartzCore -ldl"
     ;;
   MINGW*|MSYS*|CYGWIN*)
@@ -83,11 +82,6 @@ fi
 
 if [[ ! -f "$GAME_SOURCE_FILE" ]]; then
   echo "Missing source file: $GAME_SOURCE_FILE" >&2
-  exit 1
-fi
-
-if [[ "$UNAME_S" == "Darwin" && ! -f "$MACOS_PLATFORM_SOURCE_FILE" ]]; then
-  echo "Missing source file: $MACOS_PLATFORM_SOURCE_FILE" >&2
   exit 1
 fi
 

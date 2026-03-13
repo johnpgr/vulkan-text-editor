@@ -18,18 +18,28 @@ struct DynLib {
 
 bool pdlLoadLibrary(Arena* arena, String name, DynLib* out_library);
 
-template <u64 N> inline bool pdlLoadLibrary(Arena* arena, const char (&name)[N], DynLib* out_library) {
+template <u64 N>
+inline bool pdlLoadLibrary(
+    Arena* arena,
+    const char (&name)[N],
+    DynLib* out_library
+) {
     return pdlLoadLibrary(arena, {(const u8*)name, N - 1}, out_library);
 }
 
-inline bool pdlLoadLibrary(Arena* arena, const char* name, DynLib* out_library) {
+inline bool pdlLoadLibrary(
+    Arena* arena,
+    const char* name,
+    DynLib* out_library
+) {
     return pdlLoadLibrary(arena, String::fromCStr(name), out_library);
 }
 
 bool pdlUnloadLibrary(DynLib* library);
 void* pdlLoadFunction(String name, DynLib* library);
 
-template <u64 N> inline void* pdlLoadFunction(const char (&name)[N], DynLib* library) {
+template <u64 N>
+inline void* pdlLoadFunction(const char (&name)[N], DynLib* library) {
     return pdlLoadFunction({(const u8*)name, N - 1}, library);
 }
 
