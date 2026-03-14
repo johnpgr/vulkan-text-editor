@@ -1,10 +1,10 @@
 #include "base/core.h"
 
-namespace Renderer {
+namespace renderer {
 
-bool Create(Arena* arena);
-void Destroy(void);
-bool DrawFrame(void);
+bool create(Arena* arena);
+void destroy(void);
+bool draw_frame(void);
 
 struct VulkanState {
     VkInstance instance;
@@ -25,17 +25,17 @@ internal const char* VALIDATION_LAYER_NAME = "VK_LAYER_KHRONOS_validation";
 internal const char* PORTABILITY_SUBSET_EXTENSION_NAME =
     "VK_KHR_portability_subset";
 
-internal bool FindGraphicsQueueFamily(
+internal bool find_graphics_queue_family(
     Arena* arena,
     VkPhysicalDevice physical_device,
     u32* out_queue_family_index
 );
 
-internal u32 GetTargetApiVersion(void);
+internal u32 get_target_api_version(void);
 
-internal u32 ScoreDevice(Arena* arena, VkPhysicalDevice physical_device);
+internal u32 score_device(Arena* arena, VkPhysicalDevice physical_device);
 
-internal u32 GetTargetApiVersion(void) {
+internal u32 get_target_api_version(void) {
     u32 api_version = VK_API_VERSION_1_0;
     PFN_vkEnumerateInstanceVersion enumerate_instance_version =
         (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(
@@ -51,9 +51,9 @@ internal u32 GetTargetApiVersion(void) {
     return VK_API_VERSION_1_0;
 }
 
-internal bool HasInstanceExtension(Arena* arena, const char* extension_name) {
-    ASSUME(arena != nullptr);
-    ASSUME(extension_name != nullptr);
+internal bool has_instance_extension(Arena* arena, const char* extension_name) {
+    assume(arena != nullptr);
+    assume(extension_name != nullptr);
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateInstanceExtensionProperties(
@@ -66,7 +66,7 @@ internal bool HasInstanceExtension(Arena* arena, const char* extension_name) {
     }
 
     u64 arena_mark = arena->mark();
-    DEFER {
+    defer {
         arena->restore(arena_mark);
     };
 
@@ -93,24 +93,24 @@ internal bool HasInstanceExtension(Arena* arena, const char* extension_name) {
     return found;
 }
 
-internal Array<const char*> GetInstanceExtensions(Arena* arena) {
-    ASSUME(arena != nullptr);
+internal Array<const char*> get_instance_extensions(Arena* arena) {
+    assume(arena != nullptr);
 
     ArrayList<const char*> extensions =
-        Platform::GetVulkanInstanceExtensions(arena);
+        platform::get_vulkan_instance_extensions(arena);
 
 #ifndef NDEBUG
-    if (HasInstanceExtension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+    if (has_instance_extension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
         extensions.push(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 #endif
 
-    return extensions.toArray();
+    return extensions.to_array();
 }
 
-internal bool HasLayer(Arena* arena, const char* layer_name) {
-    ASSUME(arena != nullptr);
-    ASSUME(layer_name != nullptr);
+internal bool has_layer(Arena* arena, const char* layer_name) {
+    assume(arena != nullptr);
+    assume(layer_name != nullptr);
 
     u32 layer_count = 0;
     VkResult result = vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
@@ -119,7 +119,7 @@ internal bool HasLayer(Arena* arena, const char* layer_name) {
     }
 
     u64 arena_mark = arena->mark();
-    DEFER {
+    defer {
         arena->restore(arena_mark);
     };
 
@@ -142,7 +142,7 @@ internal bool HasLayer(Arena* arena, const char* layer_name) {
 }
 
 #ifndef NDEBUG
-internal VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_types,
     const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
@@ -172,10 +172,10 @@ internal VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
     return VK_FALSE;
 }
 
-internal void BuildDebugMessengerCreateInfo(
+internal void build_debug_messenger_create_info(
     VkDebugUtilsMessengerCreateInfoEXT* out_create_info
 ) {
-    ASSUME(out_create_info != nullptr);
+    assume(out_create_info != nullptr);
 
     *out_create_info = {};
     out_create_info->sType =
@@ -186,10 +186,10 @@ internal void BuildDebugMessengerCreateInfo(
     out_create_info->messageType =
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    out_create_info->pfnUserCallback = DebugCallback;
+    out_create_info->pfnUserCallback = debug_callback;
 }
 
-internal bool CreateDebugMessenger(void) {
+internal bool create_debug_messenger(void) {
     PFN_vkCreateDebugUtilsMessengerEXT create_debug_utils_messenger =
         (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
             vk_state.instance,
@@ -200,7 +200,7 @@ internal bool CreateDebugMessenger(void) {
     }
 
     VkDebugUtilsMessengerCreateInfoEXT create_info = {};
-    BuildDebugMessengerCreateInfo(&create_info);
+    build_debug_messenger_create_info(&create_info);
 
     return create_debug_utils_messenger(
                vk_state.instance,
@@ -211,14 +211,14 @@ internal bool CreateDebugMessenger(void) {
 }
 #endif
 
-internal bool HasDeviceExtension(
+internal bool has_device_extension(
     Arena* arena,
     VkPhysicalDevice physical_device,
     const char* extension_name
 ) {
-    ASSUME(arena != nullptr);
-    ASSUME(physical_device != VK_NULL_HANDLE);
-    ASSUME(extension_name != nullptr);
+    assume(arena != nullptr);
+    assume(physical_device != VK_NULL_HANDLE);
+    assume(extension_name != nullptr);
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateDeviceExtensionProperties(
@@ -232,7 +232,7 @@ internal bool HasDeviceExtension(
     }
 
     u64 arena_mark = arena->mark();
-    DEFER {
+    defer {
         arena->restore(arena_mark);
     };
 
@@ -260,17 +260,17 @@ internal bool HasDeviceExtension(
     return found;
 }
 
-internal bool SupportsDynamicRendering(
+internal bool supports_dynamic_rendering(
     Arena* arena,
     VkPhysicalDevice physical_device
 ) {
-    ASSUME(arena != nullptr);
-    ASSUME(physical_device != VK_NULL_HANDLE);
+    assume(arena != nullptr);
+    assume(physical_device != VK_NULL_HANDLE);
 
     VkPhysicalDeviceProperties properties = {};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
 
-    bool has_dynamic_rendering_extension = HasDeviceExtension(
+    bool has_dynamic_rendering_extension = has_device_extension(
         arena,
         physical_device,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
@@ -301,23 +301,23 @@ internal bool SupportsDynamicRendering(
            dynamic_rendering_features.dynamicRendering == VK_TRUE;
 }
 
-internal bool IsDeviceSuitable(
+internal bool is_device_suitable(
     Arena* arena,
     VkPhysicalDevice physical_device
 ) {
-    return ScoreDevice(arena, physical_device) > 0;
+    return score_device(arena, physical_device) > 0;
 }
 
-internal u32 ScoreDevice(Arena* arena, VkPhysicalDevice physical_device) {
-    ASSUME(arena != nullptr);
-    ASSUME(physical_device != VK_NULL_HANDLE);
+internal u32 score_device(Arena* arena, VkPhysicalDevice physical_device) {
+    assume(arena != nullptr);
+    assume(physical_device != VK_NULL_HANDLE);
 
-    if (!SupportsDynamicRendering(arena, physical_device)) {
+    if (!supports_dynamic_rendering(arena, physical_device)) {
         return 0;
     }
 
     u32 graphics_queue_family_index = 0;
-    if (!FindGraphicsQueueFamily(
+    if (!find_graphics_queue_family(
             arena,
             physical_device,
             &graphics_queue_family_index
@@ -345,14 +345,14 @@ internal u32 ScoreDevice(Arena* arena, VkPhysicalDevice physical_device) {
     return score;
 }
 
-internal bool FindGraphicsQueueFamily(
+internal bool find_graphics_queue_family(
     Arena* arena,
     VkPhysicalDevice physical_device,
     u32* out_queue_family_index
 ) {
-    ASSUME(arena != nullptr);
-    ASSUME(physical_device != VK_NULL_HANDLE);
-    ASSUME(out_queue_family_index != nullptr);
+    assume(arena != nullptr);
+    assume(physical_device != VK_NULL_HANDLE);
+    assume(out_queue_family_index != nullptr);
 
     u32 queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(
@@ -365,7 +365,7 @@ internal bool FindGraphicsQueueFamily(
     }
 
     u64 arena_mark = arena->mark();
-    DEFER {
+    defer {
         arena->restore(arena_mark);
     };
 
@@ -393,8 +393,8 @@ internal bool FindGraphicsQueueFamily(
     return found;
 }
 
-internal bool PickPhysicalDevice(Arena* arena) {
-    ASSUME(arena != nullptr);
+internal bool pick_physical_device(Arena* arena) {
+    assume(arena != nullptr);
 
     u32 physical_device_count = 0;
     VkResult result = vkEnumeratePhysicalDevices(
@@ -407,7 +407,7 @@ internal bool PickPhysicalDevice(Arena* arena) {
     }
 
     u64 arena_mark = arena->mark();
-    DEFER {
+    defer {
         arena->restore(arena_mark);
     };
 
@@ -427,11 +427,11 @@ internal bool PickPhysicalDevice(Arena* arena) {
     u32 best_score = 0;
 
     for (u32 i = 0; i < physical_device_count; i++) {
-        if (!IsDeviceSuitable(arena, physical_devices[i])) {
+        if (!is_device_suitable(arena, physical_devices[i])) {
             continue;
         }
 
-        u32 score = ScoreDevice(arena, physical_devices[i]);
+        u32 score = score_device(arena, physical_devices[i]);
         if (score <= best_score) {
             continue;
         }
@@ -443,14 +443,14 @@ internal bool PickPhysicalDevice(Arena* arena) {
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
-internal bool CreateDevice(Arena* arena) {
-    ASSUME(arena != nullptr);
+internal bool create_device(Arena* arena) {
+    assume(arena != nullptr);
 
     if (vk_state.physical_device == VK_NULL_HANDLE) {
         return false;
     }
 
-    if (!FindGraphicsQueueFamily(
+    if (!find_graphics_queue_family(
             arena,
             vk_state.physical_device,
             &vk_state.graphics_queue_family_index
@@ -470,14 +470,14 @@ internal bool CreateDevice(Arena* arena) {
 
     bool needs_dynamic_rendering_extension =
         properties.apiVersion < VK_API_VERSION_1_3;
-    bool needs_portability_subset_extension = HasDeviceExtension(
+    bool needs_portability_subset_extension = has_device_extension(
         arena,
         vk_state.physical_device,
         PORTABILITY_SUBSET_EXTENSION_NAME
     );
 
     if (needs_dynamic_rendering_extension &&
-        !HasDeviceExtension(
+        !has_device_extension(
             arena,
             vk_state.physical_device,
             VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
@@ -495,7 +495,7 @@ internal bool CreateDevice(Arena* arena) {
 
     Array<const char*> device_extensions = {};
     if (device_extension_count > 0) {
-        device_extensions = Array<const char*>::make(arena, device_extension_count);
+        device_extensions = Array<const char*>::create(arena, device_extension_count);
 
         if (needs_dynamic_rendering_extension) {
             device_extensions.items[device_extensions.count++] =
@@ -549,7 +549,7 @@ internal bool CreateDevice(Arena* arena) {
            vk_state.graphics_queue != VK_NULL_HANDLE;
 }
 
-void Destroy(void) {
+void destroy(void) {
     if (vk_state.device != VK_NULL_HANDLE) {
         vkDestroyDevice(vk_state.device, nullptr);
     }
@@ -573,17 +573,17 @@ void Destroy(void) {
     vk_state = {};
 }
 
-bool Create(Arena* arena) {
-    ASSUME(arena != nullptr);
+bool create(Arena* arena) {
+    assume(arena != nullptr);
 
     if (vk_state.initialized) {
-        Destroy();
+        destroy();
     }
 
     bool created_renderer = false;
-    DEFER {
+    defer {
         if (!created_renderer && vk_state.instance != VK_NULL_HANDLE) {
-            Destroy();
+            destroy();
         }
     };
 
@@ -593,15 +593,15 @@ bool Create(Arena* arena) {
     info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     info.pEngineName = "No Engine";
     info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    info.apiVersion = GetTargetApiVersion();
+    info.apiVersion = get_target_api_version();
     vk_state.app_info = info;
 
-    Array<const char*> extensions = GetInstanceExtensions(arena);
+    Array<const char*> extensions = get_instance_extensions(arena);
     Array<const char*> layers = {};
 #ifndef NDEBUG
-    bool has_validation_layer = HasLayer(arena, VALIDATION_LAYER_NAME);
+    bool has_validation_layer = has_layer(arena, VALIDATION_LAYER_NAME);
     if (has_validation_layer) {
-        layers = Array<const char*>::make(arena, 1);
+        layers = Array<const char*>::create(arena, 1);
         layers.items[0] = VALIDATION_LAYER_NAME;
         layers.count = 1;
     }
@@ -614,7 +614,7 @@ bool Create(Arena* arena) {
     create_info.ppEnabledExtensionNames = extensions.items;
     create_info.enabledLayerCount = layers.count;
     create_info.ppEnabledLayerNames = layers.items;
-    if (HasInstanceExtension(
+    if (has_instance_extension(
             arena,
             VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
         )) {
@@ -622,8 +622,8 @@ bool Create(Arena* arena) {
     }
 #ifndef NDEBUG
     VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {};
-    if (HasInstanceExtension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
-        BuildDebugMessengerCreateInfo(&debug_create_info);
+    if (has_instance_extension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+        build_debug_messenger_create_info(&debug_create_info);
         create_info.pNext = &debug_create_info;
     }
 #endif
@@ -635,20 +635,20 @@ bool Create(Arena* arena) {
     }
 
 #ifndef NDEBUG
-    if (HasInstanceExtension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) &&
-        !CreateDebugMessenger()) {
+    if (has_instance_extension(arena, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) &&
+        !create_debug_messenger()) {
         LOG_WARN("Failed to create Vulkan debug messenger.");
     }
 #endif
 
-    if (!PickPhysicalDevice(arena)) {
+    if (!pick_physical_device(arena)) {
         LOG_FATAL(
             "Failed to find a physical device with dynamic rendering support!"
         );
         return false;
     }
 
-    if (!CreateDevice(arena)) {
+    if (!create_device(arena)) {
         LOG_FATAL("Failed to create Vulkan logical device!");
         return false;
     }
@@ -658,7 +658,7 @@ bool Create(Arena* arena) {
     return true;
 }
 
-bool DrawFrame(void) {
+bool draw_frame(void) {
     return true;
 }
 

@@ -9,7 +9,7 @@
 #include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
 
-namespace Platform {
+namespace platform {
 
 struct LinuxPlatformState {
     xcb_connection_t* connection;
@@ -31,7 +31,7 @@ internal LinuxPlatformState linux_state = {};
 internal Arena linux_scratch_arena = {};
 internal bool linux_scratch_initialized = false;
 
-void Fail(const char* message) {
+void fail(const char* message) {
     int error = errno;
     if (error != 0) {
         LOG_FATAL("%s failed: %s", message, strerror(error));
@@ -41,7 +41,7 @@ void Fail(const char* message) {
     abort();
 }
 
-internal xcb_screen_t* GetDefaultScreenLinux(xcb_connection_t* connection) {
+internal xcb_screen_t* get_default_screen_linux(xcb_connection_t* connection) {
     const xcb_setup_t* setup = xcb_get_setup(connection);
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(setup);
     if (it.rem == 0 || !it.data) {
@@ -50,7 +50,7 @@ internal xcb_screen_t* GetDefaultScreenLinux(xcb_connection_t* connection) {
     return it.data;
 }
 
-internal xcb_atom_t InternAtomLinux(const char* name) {
+internal xcb_atom_t intern_atom_linux(const char* name) {
     xcb_intern_atom_cookie_t cookie =
         xcb_intern_atom(linux_state.connection, 0, (u16)strlen(name), name);
     xcb_intern_atom_reply_t* reply =
@@ -58,14 +58,14 @@ internal xcb_atom_t InternAtomLinux(const char* name) {
     if (!reply) {
         return XCB_ATOM_NONE;
     }
-    DEFER {
+    defer {
         free(reply);
     };
 
     return reply->atom;
 }
 
-internal void ApplyWindowTitleLinux(String title) {
+internal void apply_window_title_linux(String title) {
     if (!linux_state.initialized || linux_state.window == XCB_WINDOW_NONE) {
         return;
     }
@@ -99,7 +99,7 @@ internal void ApplyWindowTitleLinux(String title) {
     }
 }
 
-internal void DestroyNativeWindowLinux(void) {
+internal void destroy_native_window_linux(void) {
     if (linux_state.connection != nullptr &&
         linux_state.window != XCB_WINDOW_NONE) {
         xcb_destroy_window(linux_state.connection, linux_state.window);
@@ -108,17 +108,17 @@ internal void DestroyNativeWindowLinux(void) {
     }
 }
 
-internal Arena* GetScratchLinux(void) {
+internal Arena* get_scratch_linux(void) {
     if (!linux_scratch_initialized) {
-        linux_scratch_arena = CreateArena();
+        linux_scratch_arena = Arena::create();
         linux_scratch_initialized = true;
     }
     return &linux_scratch_arena;
 }
 
-internal bool GetExecutableDirLinux(char* buffer, usize buffer_size) {
-    ASSERT(buffer != nullptr, "Buffer must not be null!");
-    ASSERT(buffer_size > 0, "Buffer size must be non-zero!");
+internal bool get_executable_dir_linux(char* buffer, usize buffer_size) {
+    assert(buffer != nullptr, "Buffer must not be null!");
+    assert(buffer_size > 0, "Buffer size must be non-zero!");
 
     ssize_t size = readlink("/proc/self/exe", buffer, buffer_size - 1);
     if (size <= 0) {
@@ -134,9 +134,9 @@ internal bool GetExecutableDirLinux(char* buffer, usize buffer_size) {
     return true;
 }
 
-internal bool TryLoadDynamicLibraryLinux(const char* path, void** out_handle) {
-    ASSERT(path != nullptr, "Library path must not be null!");
-    ASSERT(out_handle != nullptr, "Output handle must not be null!");
+internal bool try_load_dynamic_library_linux(const char* path, void** out_handle) {
+    assert(path != nullptr, "Library path must not be null!");
+    assert(out_handle != nullptr, "Output handle must not be null!");
 
     dlerror();
     void* handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -148,7 +148,7 @@ internal bool TryLoadDynamicLibraryLinux(const char* path, void** out_handle) {
     return true;
 }
 
-internal ErrorCode GetCopyErrorLinux(int error) {
+internal ErrorCode get_copy_error_linux(int error) {
     switch (error) {
         case 0:
             return ErrorCode::SUCCESS;
@@ -164,9 +164,9 @@ internal ErrorCode GetCopyErrorLinux(int error) {
     }
 }
 
-void CreateWindow(String title, int width, int height) {
+void create_window(String title, int width, int height) {
     if (linux_state.initialized) {
-        DestroyWindow();
+        destroy_window();
     }
 
     linux_state.connection = xcb_connect(nullptr, nullptr);
@@ -176,7 +176,7 @@ void CreateWindow(String title, int width, int height) {
         abort();
     }
 
-    linux_state.screen = GetDefaultScreenLinux(linux_state.connection);
+    linux_state.screen = get_default_screen_linux(linux_state.connection);
     if (!linux_state.screen) {
         xcb_disconnect(linux_state.connection);
         linux_state = {};
@@ -219,10 +219,10 @@ void CreateWindow(String title, int width, int height) {
         abort();
     }
 
-    linux_state.wm_protocols = InternAtomLinux("WM_PROTOCOLS");
-    linux_state.wm_delete_window = InternAtomLinux("WM_DELETE_WINDOW");
-    linux_state.net_wm_name = InternAtomLinux("_NET_WM_NAME");
-    linux_state.utf8_string = InternAtomLinux("UTF8_STRING");
+    linux_state.wm_protocols = intern_atom_linux("WM_PROTOCOLS");
+    linux_state.wm_delete_window = intern_atom_linux("WM_DELETE_WINDOW");
+    linux_state.net_wm_name = intern_atom_linux("_NET_WM_NAME");
+    linux_state.utf8_string = intern_atom_linux("UTF8_STRING");
 
     if (linux_state.wm_protocols != XCB_ATOM_NONE &&
         linux_state.wm_delete_window != XCB_ATOM_NONE) {
@@ -238,7 +238,7 @@ void CreateWindow(String title, int width, int height) {
         );
     }
 
-    ApplyWindowTitleLinux(title);
+    apply_window_title_linux(title);
     xcb_flush(linux_state.connection);
 
     linux_state.should_close = false;
@@ -246,23 +246,23 @@ void CreateWindow(String title, int width, int height) {
     linux_state.initialized = true;
 }
 
-void DestroyWindow(void) {
+void destroy_window(void) {
     if (!linux_state.initialized) {
         return;
     }
 
-    DestroyNativeWindowLinux();
+    destroy_native_window_linux();
     if (linux_state.connection != nullptr) {
         xcb_disconnect(linux_state.connection);
     }
     linux_state = {};
 }
 
-bool ShouldWindowClose(void) {
+bool should_window_close(void) {
     return linux_state.should_close;
 }
 
-void PollEvents(void) {
+void poll_events(void) {
     if (!linux_state.initialized || !linux_state.connection) {
         return;
     }
@@ -297,14 +297,14 @@ void PollEvents(void) {
     }
 }
 
-void SetWindowTitle(String title) {
-    ApplyWindowTitleLinux(title);
+void set_window_title(String title) {
+    apply_window_title_linux(title);
     if (linux_state.connection != nullptr) {
         xcb_flush(linux_state.connection);
     }
 }
 
-void GetWindowSize(int* width, int* height) {
+void get_window_size(int* width, int* height) {
     if (width) {
         *width = linux_state.width;
     }
@@ -313,7 +313,7 @@ void GetWindowSize(int* width, int* height) {
     }
 }
 
-void SetWindowSize(int width, int height) {
+void set_window_size(int width, int height) {
     if (!linux_state.initialized || linux_state.window == XCB_WINDOW_NONE) {
         return;
     }
@@ -331,17 +331,17 @@ void SetWindowSize(int width, int height) {
     linux_state.height = height;
 }
 
-void SetWindowResizable(bool resizable) {
+void set_window_resizable(bool resizable) {
     linux_state.resizable = resizable;
 }
 
-void PresentWindow(void) {
+void present_window(void) {
     if (linux_state.connection != nullptr) {
         xcb_flush(linux_state.connection);
     }
 }
 
-void ShowWindow(void) {
+void show_window(void) {
     if (!linux_state.initialized || linux_state.visible ||
         linux_state.window == XCB_WINDOW_NONE) {
         return;
@@ -352,20 +352,20 @@ void ShowWindow(void) {
     linux_state.visible = true;
 }
 
-void CreateAudio(void) {
+void create_audio(void) {
 }
 
-void DestroyAudio(void) {
+void destroy_audio(void) {
 }
 
-void UpdateAudioBuffer(void) {
+void update_audio_buffer(void) {
 }
 
-void SetAudioVolume(f32 volume) {
+void set_audio_volume(f32 volume) {
     (void)volume;
 }
 
-bool LoadDynamicLibrary(Arena* arena, String name, DynamicLibrary* out_library) {
+bool load_dynamic_library(Arena* arena, String name, DynamicLibrary* out_library) {
     if (!arena || !out_library || name.size == 0) {
         return false;
     }
@@ -373,22 +373,22 @@ bool LoadDynamicLibrary(Arena* arena, String name, DynamicLibrary* out_library) 
     *out_library = {};
     out_library->arena = arena;
 
-    String filename = StringConcat(
+    String filename = String::concat(
         arena,
-        StringConcat(arena, GetDynamicLibraryPrefix(), name),
-        GetDynamicLibraryExtension()
+        String::concat(arena, get_dynamic_library_prefix(), name),
+        get_dynamic_library_extension()
     );
 
-    Arena* scratch = GetScratchLinux();
+    Arena* scratch = get_scratch_linux();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* filename_cstr = filename.toCstr(scratch);
+    const char* filename_cstr = filename.to_cstr(scratch);
     char executable_dir[PATH_MAX] = {};
     bool have_executable_dir =
-        GetExecutableDirLinux(executable_dir, sizeof(executable_dir));
+        get_executable_dir_linux(executable_dir, sizeof(executable_dir));
     char cwd[PATH_MAX] = {};
     bool have_cwd = getcwd(cwd, sizeof(cwd)) != nullptr;
     void* handle = nullptr;
@@ -396,19 +396,19 @@ bool LoadDynamicLibrary(Arena* arena, String name, DynamicLibrary* out_library) 
     if (have_executable_dir) {
         String resolved_path =
             String::fmt(scratch, "%s/%s", executable_dir, filename_cstr);
-        if (TryLoadDynamicLibraryLinux((const char*)resolved_path.str, &handle)) {
+        if (try_load_dynamic_library_linux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
     if (!handle && have_cwd) {
         String resolved_path = String::fmt(scratch, "%s/%s", cwd, filename_cstr);
-        if (TryLoadDynamicLibraryLinux((const char*)resolved_path.str, &handle)) {
+        if (try_load_dynamic_library_linux((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
-    if (!handle && TryLoadDynamicLibraryLinux(filename_cstr, &handle)) {
+    if (!handle && try_load_dynamic_library_linux(filename_cstr, &handle)) {
         out_library->filename = String::copy(arena, filename);
     }
 
@@ -421,11 +421,11 @@ bool LoadDynamicLibrary(Arena* arena, String name, DynamicLibrary* out_library) 
     out_library->internal_data = handle;
     out_library->internal_data_size = sizeof(void*);
     out_library->watch_id = 0;
-    out_library->functions = ArrayList<DynamicLibraryFunction>::make(arena);
+    out_library->functions = ArrayList<DynamicLibraryFunction>::create(arena);
     return true;
 }
 
-bool UnloadDynamicLibrary(DynamicLibrary* library) {
+bool unload_dynamic_library(DynamicLibrary* library) {
     if (!library || !library->internal_data) {
         return false;
     }
@@ -438,7 +438,7 @@ bool UnloadDynamicLibrary(DynamicLibrary* library) {
     return true;
 }
 
-void* LoadDynamicFunction(String name, DynamicLibrary* library) {
+void* load_dynamic_function(String name, DynamicLibrary* library) {
     if (!library || !library->internal_data || !library->arena ||
         name.size == 0) {
         return nullptr;
@@ -452,15 +452,15 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
         }
     }
 
-    Arena* scratch = GetScratchLinux();
+    Arena* scratch = get_scratch_linux();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* symbol_name = name.toCstr(scratch);
+    const char* symbol_name = name.to_cstr(scratch);
     const char* filename_cstr =
-        library->filename.str != nullptr ? library->filename.toCstr(scratch) : "<unknown>";
+        library->filename.str != nullptr ? library->filename.to_cstr(scratch) : "<unknown>";
     dlerror();
     void* symbol = dlsym(library->internal_data, symbol_name);
     const char* error = dlerror();
@@ -482,37 +482,37 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
     return symbol;
 }
 
-String GetDynamicLibraryExtension(void) {
+String get_dynamic_library_extension(void) {
     return String::lit(".so");
 }
 
-String GetDynamicLibraryPrefix(void) {
+String get_dynamic_library_prefix(void) {
     return String::lit("lib");
 }
 
-ErrorCode CopyFile(
+ErrorCode copy_file(
     String source,
     String dest,
     bool overwrite_if_exists
 ) {
-    Arena* scratch = GetScratchLinux();
+    Arena* scratch = get_scratch_linux();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* source_path = source.toCstr(scratch);
-    const char* dest_path = dest.toCstr(scratch);
+    const char* source_path = source.to_cstr(scratch);
+    const char* dest_path = dest.to_cstr(scratch);
 
     int source_fd = -1;
-    DEFER {
+    defer {
         if (source_fd >= 0) {
             close(source_fd);
         }
     };
 
     int dest_fd = -1;
-    DEFER {
+    defer {
         if (dest_fd >= 0) {
             close(dest_fd);
         }
@@ -520,12 +520,12 @@ ErrorCode CopyFile(
 
     source_fd = open(source_path, O_RDONLY);
     if (source_fd < 0) {
-        return GetCopyErrorLinux(errno);
+        return get_copy_error_linux(errno);
     }
 
     struct stat source_stat = {};
     if (fstat(source_fd, &source_stat) != 0) {
-        return GetCopyErrorLinux(errno);
+        return get_copy_error_linux(errno);
     }
 
     int dest_flags = O_WRONLY | O_CREAT;
@@ -533,7 +533,7 @@ ErrorCode CopyFile(
 
     dest_fd = open(dest_path, dest_flags, source_stat.st_mode);
     if (dest_fd < 0) {
-        return GetCopyErrorLinux(errno);
+        return get_copy_error_linux(errno);
     }
 
     ErrorCode result = ErrorCode::SUCCESS;
@@ -544,7 +544,7 @@ ErrorCode CopyFile(
             break;
         }
         if (bytes_read < 0) {
-            result = GetCopyErrorLinux(errno);
+            result = get_copy_error_linux(errno);
             break;
         }
 
@@ -556,7 +556,7 @@ ErrorCode CopyFile(
                 (size_t)(bytes_read - total_written)
             );
             if (bytes_written < 0) {
-                result = GetCopyErrorLinux(errno);
+                result = get_copy_error_linux(errno);
                 break;
             }
             total_written += bytes_written;
@@ -570,16 +570,16 @@ ErrorCode CopyFile(
     return result;
 }
 
-ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena) {
-    ASSUME(arena != nullptr);
+ArrayList<const char*> get_vulkan_instance_extensions(Arena* arena) {
+    assume(arena != nullptr);
 
-    ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
+    ArrayList<const char*> extensions = ArrayList<const char*>::create(arena);
     extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
     extensions.push(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
     return extensions;
 }
 
-bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+bool create_vulkan_surface(VkInstance instance, VkSurfaceKHR* out_surface) {
     if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
         linux_state.connection == nullptr ||
         linux_state.window == XCB_WINDOW_NONE) {

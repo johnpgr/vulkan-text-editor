@@ -15,7 +15,7 @@
 #include <vulkan/vulkan_metal.h>
 #pragma pop_macro("internal")
 
-namespace Platform {
+namespace platform {
 
 struct MacPlatformState {
     NSApplication* application;
@@ -31,7 +31,7 @@ struct MacPlatformState {
 
 extern MacPlatformState mac_state;
 
-void Fail(const char* message) {
+void fail(const char* message) {
     int error = errno;
     if (error != 0) {
         LOG_FATAL("%s failed: %s", message, strerror(error));
@@ -50,28 +50,28 @@ void Fail(const char* message) {
 
 - (void)windowWillClose:(NSNotification*)notification {
     (void)notification;
-    Platform::mac_state.should_close = true;
-    Platform::mac_state.visible = false;
+    platform::mac_state.should_close = true;
+    platform::mac_state.visible = false;
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
     NSWindow* window = [notification object];
     NSRect content_rect = [window contentRectForFrameRect:[window frame]];
-    Platform::mac_state.width = (int)content_rect.size.width;
-    Platform::mac_state.height = (int)content_rect.size.height;
+    platform::mac_state.width = (int)content_rect.size.width;
+    platform::mac_state.height = (int)content_rect.size.height;
 }
 
 @end
 
-namespace Platform {
+namespace platform {
 
 MacPlatformState mac_state = {};
 internal Arena mac_scratch_arena = {};
 internal bool mac_scratch_initialized = false;
 
-internal Arena* GetScratchMacOS(void);
+internal Arena* get_scratch_macos(void);
 
-internal bool HasInstanceExtensionMacOS(const char* extension_name) {
+internal bool has_instance_extension_macos(const char* extension_name) {
     if (extension_name == nullptr || extension_name[0] == 0) {
         return false;
     }
@@ -86,9 +86,9 @@ internal bool HasInstanceExtensionMacOS(const char* extension_name) {
         return false;
     }
 
-    Arena* scratch = GetScratchMacOS();
+    Arena* scratch = get_scratch_macos();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
@@ -112,23 +112,23 @@ internal bool HasInstanceExtensionMacOS(const char* extension_name) {
     return false;
 }
 
-internal NSString* ToNSStringMacOS(String text) {
+internal NSString* to_ns_string_macos(String text) {
     return [[[NSString alloc] initWithBytes:text.str
                                      length:(NSUInteger)text.size
                                    encoding:NSUTF8StringEncoding] autorelease];
 }
 
-internal Arena* GetScratchMacOS(void) {
+internal Arena* get_scratch_macos(void) {
     if (!mac_scratch_initialized) {
-        mac_scratch_arena = CreateArena();
+        mac_scratch_arena = Arena::create();
         mac_scratch_initialized = true;
     }
     return &mac_scratch_arena;
 }
 
-internal bool GetExecutableDirMacOS(char* buffer, usize buffer_size) {
-    ASSERT(buffer != nullptr, "Buffer must not be null!");
-    ASSERT(buffer_size > 0, "Buffer size must be non-zero!");
+internal bool get_executable_dir_macos(char* buffer, usize buffer_size) {
+    assert(buffer != nullptr, "Buffer must not be null!");
+    assert(buffer_size > 0, "Buffer size must be non-zero!");
 
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);
@@ -148,9 +148,9 @@ internal bool GetExecutableDirMacOS(char* buffer, usize buffer_size) {
     return true;
 }
 
-internal bool TryLoadDynamicLibraryMacOS(const char* path, void** out_handle) {
-    ASSERT(path != nullptr, "Library path must not be null!");
-    ASSERT(out_handle != nullptr, "Output handle must not be null!");
+internal bool try_load_dynamic_library_macos(const char* path, void** out_handle) {
+    assert(path != nullptr, "Library path must not be null!");
+    assert(out_handle != nullptr, "Output handle must not be null!");
 
     dlerror();
     void* handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -162,7 +162,7 @@ internal bool TryLoadDynamicLibraryMacOS(const char* path, void** out_handle) {
     return true;
 }
 
-internal ErrorCode GetCopyErrorMacOS(int error) {
+internal ErrorCode get_copy_error_macos(int error) {
     switch (error) {
         case 0:
             return ErrorCode::SUCCESS;
@@ -178,7 +178,7 @@ internal ErrorCode GetCopyErrorMacOS(int error) {
     }
 }
 
-internal NSUInteger GetWindowStyleMacOS(void) {
+internal NSUInteger get_window_style_macos(void) {
     NSUInteger style = NSWindowStyleMaskTitled |
         NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable;
@@ -188,10 +188,10 @@ internal NSUInteger GetWindowStyleMacOS(void) {
     return style;
 }
 
-void CreateWindow(String title, int width, int height) {
+void create_window(String title, int width, int height) {
     @autoreleasepool {
         if (mac_state.initialized) {
-            DestroyWindow();
+            destroy_window();
         }
 
         mac_state.application = [NSApplication sharedApplication];
@@ -203,16 +203,16 @@ void CreateWindow(String title, int width, int height) {
         NSRect rect = NSMakeRect(0, 0, width, height);
         mac_state.window = [[NSWindow alloc]
             initWithContentRect:rect
-                      styleMask:GetWindowStyleMacOS()
+                      styleMask:get_window_style_macos()
                         backing:NSBackingStoreBuffered
                           defer:NO];
         if (mac_state.window == nil) {
-            Fail("Failed to create macOS window.");
+            fail("Failed to create macOS window.");
         }
 
         mac_state.delegate = [[CppGamingWindowDelegate alloc] init];
         [mac_state.window setDelegate:mac_state.delegate];
-        [mac_state.window setTitle:ToNSStringMacOS(
+        [mac_state.window setTitle:to_ns_string_macos(
             title.size > 0 ? title : String::lit("cpp-gaming")
         )];
 
@@ -224,7 +224,7 @@ void CreateWindow(String title, int width, int height) {
     }
 }
 
-void DestroyWindow(void) {
+void destroy_window(void) {
     @autoreleasepool {
         if (!mac_state.initialized) {
             return;
@@ -244,11 +244,11 @@ void DestroyWindow(void) {
     }
 }
 
-bool ShouldWindowClose(void) {
+bool should_window_close(void) {
     return mac_state.should_close;
 }
 
-void PollEvents(void) {
+void poll_events(void) {
     @autoreleasepool {
         if (!mac_state.initialized || mac_state.application == nil) {
             return;
@@ -271,15 +271,15 @@ void PollEvents(void) {
     }
 }
 
-void SetWindowTitle(String title) {
+void set_window_title(String title) {
     @autoreleasepool {
         if (mac_state.window != nil) {
-            [mac_state.window setTitle:ToNSStringMacOS(title)];
+            [mac_state.window setTitle:to_ns_string_macos(title)];
         }
     }
 }
 
-void GetWindowSize(int* width, int* height) {
+void get_window_size(int* width, int* height) {
     if (width) {
         *width = mac_state.width;
     }
@@ -288,7 +288,7 @@ void GetWindowSize(int* width, int* height) {
     }
 }
 
-void SetWindowSize(int width, int height) {
+void set_window_size(int width, int height) {
     @autoreleasepool {
         if (mac_state.window == nil) {
             return;
@@ -302,7 +302,7 @@ void SetWindowSize(int width, int height) {
     }
 }
 
-void SetWindowResizable(bool resizable) {
+void set_window_resizable(bool resizable) {
     @autoreleasepool {
         mac_state.resizable = resizable;
         if (mac_state.window == nil) {
@@ -319,7 +319,7 @@ void SetWindowResizable(bool resizable) {
     }
 }
 
-void PresentWindow(void) {
+void present_window(void) {
     @autoreleasepool {
         if (mac_state.window != nil) {
             [mac_state.window displayIfNeeded];
@@ -327,7 +327,7 @@ void PresentWindow(void) {
     }
 }
 
-void ShowWindow(void) {
+void show_window(void) {
     @autoreleasepool {
         if (!mac_state.initialized || mac_state.visible ||
             mac_state.window == nil) {
@@ -340,20 +340,20 @@ void ShowWindow(void) {
     }
 }
 
-void CreateAudio(void) {
+void create_audio(void) {
 }
 
-void DestroyAudio(void) {
+void destroy_audio(void) {
 }
 
-void UpdateAudioBuffer(void) {
+void update_audio_buffer(void) {
 }
 
-void SetAudioVolume(f32 volume) {
+void set_audio_volume(f32 volume) {
     (void)volume;
 }
 
-bool LoadDynamicLibrary(
+bool load_dynamic_library(
     Arena* arena,
     String name,
     DynamicLibrary* out_library
@@ -365,22 +365,22 @@ bool LoadDynamicLibrary(
     *out_library = {};
     out_library->arena = arena;
 
-    String filename = StringConcat(
+    String filename = String::concat(
         arena,
-        StringConcat(arena, GetDynamicLibraryPrefix(), name),
-        GetDynamicLibraryExtension()
+        String::concat(arena, get_dynamic_library_prefix(), name),
+        get_dynamic_library_extension()
     );
 
-    Arena* scratch = GetScratchMacOS();
+    Arena* scratch = get_scratch_macos();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* filename_cstr = filename.toCstr(scratch);
+    const char* filename_cstr = filename.to_cstr(scratch);
     char executable_dir[PATH_MAX] = {};
     bool have_executable_dir =
-        GetExecutableDirMacOS(executable_dir, sizeof(executable_dir));
+        get_executable_dir_macos(executable_dir, sizeof(executable_dir));
     char cwd[PATH_MAX] = {};
     bool have_cwd = getcwd(cwd, sizeof(cwd)) != nullptr;
     void* handle = nullptr;
@@ -388,19 +388,19 @@ bool LoadDynamicLibrary(
     if (have_executable_dir) {
         String resolved_path =
             String::fmt(scratch, "%s/%s", executable_dir, filename_cstr);
-        if (TryLoadDynamicLibraryMacOS((const char*)resolved_path.str, &handle)) {
+        if (try_load_dynamic_library_macos((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
     if (!handle && have_cwd) {
         String resolved_path = String::fmt(scratch, "%s/%s", cwd, filename_cstr);
-        if (TryLoadDynamicLibraryMacOS((const char*)resolved_path.str, &handle)) {
+        if (try_load_dynamic_library_macos((const char*)resolved_path.str, &handle)) {
             out_library->filename = String::copy(arena, resolved_path);
         }
     }
 
-    if (!handle && TryLoadDynamicLibraryMacOS(filename_cstr, &handle)) {
+    if (!handle && try_load_dynamic_library_macos(filename_cstr, &handle)) {
         out_library->filename = String::copy(arena, filename);
     }
 
@@ -413,11 +413,11 @@ bool LoadDynamicLibrary(
     out_library->internal_data = handle;
     out_library->internal_data_size = sizeof(void*);
     out_library->watch_id = 0;
-    out_library->functions = ArrayList<DynamicLibraryFunction>::make(arena);
+    out_library->functions = ArrayList<DynamicLibraryFunction>::create(arena);
     return true;
 }
 
-bool UnloadDynamicLibrary(DynamicLibrary* library) {
+bool unload_dynamic_library(DynamicLibrary* library) {
     if (!library || !library->internal_data) {
         return false;
     }
@@ -430,7 +430,7 @@ bool UnloadDynamicLibrary(DynamicLibrary* library) {
     return true;
 }
 
-void* LoadDynamicFunction(String name, DynamicLibrary* library) {
+void* load_dynamic_function(String name, DynamicLibrary* library) {
     if (!library || !library->internal_data || !library->arena ||
         name.size == 0) {
         return nullptr;
@@ -444,13 +444,13 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
         }
     }
 
-    Arena* scratch = GetScratchMacOS();
+    Arena* scratch = get_scratch_macos();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* symbol_name = name.toCstr(scratch);
+    const char* symbol_name = name.to_cstr(scratch);
     dlerror();
     void* symbol = dlsym(library->internal_data, symbol_name);
     const char* error = dlerror();
@@ -465,27 +465,27 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
     return symbol;
 }
 
-String GetDynamicLibraryExtension(void) {
+String get_dynamic_library_extension(void) {
     return String::lit(".dylib");
 }
 
-String GetDynamicLibraryPrefix(void) {
+String get_dynamic_library_prefix(void) {
     return String::lit("lib");
 }
 
-ErrorCode CopyFile(
+ErrorCode copy_file(
     String source,
     String dest,
     bool overwrite_if_exists
 ) {
-    Arena* scratch = GetScratchMacOS();
+    Arena* scratch = get_scratch_macos();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* source_path = source.toCstr(scratch);
-    const char* dest_path = dest.toCstr(scratch);
+    const char* source_path = source.to_cstr(scratch);
+    const char* dest_path = dest.to_cstr(scratch);
     copyfile_flags_t flags = COPYFILE_ALL;
     if (!overwrite_if_exists) {
         flags |= COPYFILE_EXCL;
@@ -493,20 +493,20 @@ ErrorCode CopyFile(
 
     int copied = copyfile(source_path, dest_path, nullptr, flags);
     int error = copied == 0 ? 0 : errno;
-    return GetCopyErrorMacOS(error);
+    return get_copy_error_macos(error);
 }
 
-ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena) {
-    ASSUME(arena != nullptr);
+ArrayList<const char*> get_vulkan_instance_extensions(Arena* arena) {
+    assume(arena != nullptr);
 
-    ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
+    ArrayList<const char*> extensions = ArrayList<const char*>::create(arena);
     extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
 
-    if (HasInstanceExtensionMacOS(VK_EXT_METAL_SURFACE_EXTENSION_NAME)) {
+    if (has_instance_extension_macos(VK_EXT_METAL_SURFACE_EXTENSION_NAME)) {
         extensions.push(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
     }
 
-    if (HasInstanceExtensionMacOS(
+    if (has_instance_extension_macos(
             VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
         )) {
         extensions.push(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
@@ -515,7 +515,7 @@ ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena) {
     return extensions;
 }
 
-bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+bool create_vulkan_surface(VkInstance instance, VkSurfaceKHR* out_surface) {
     if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
         mac_state.window == nil) {
         return false;

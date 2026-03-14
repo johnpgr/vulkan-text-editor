@@ -1,40 +1,36 @@
 #include "base/defines.h"
 
-#if OS_LINUX
 #include "platform/linux.cpp"
-#elif OS_MAC
 #include "platform/macos.mm"
-#elif OS_WINDOWS
 #include "platform/win32.cpp"
-#else
-#error "Unsupported platform"
-#endif
-
 #include "renderer/vulkan.cpp"
 
 typedef int (*GameTestSymbolFn)(void);
 
-MAIN {
-    (void)Renderer::DrawFrame;
+#define WIDTH 800
+#define HEIGHT 600
 
-    Arena global_arena = CreateArena();
-    Platform::CreateWindow("Unnammed game", WIDTH, HEIGHT);
-    Platform::SetWindowResizable(true);
+main {
+    (void)renderer::draw_frame;
 
-    if (!Renderer::Create(&global_arena)) {
+    Arena global_arena = Arena::create();
+    platform::create_window("Unnammed game", WIDTH, HEIGHT);
+    platform::set_window_resizable(true);
+
+    if (!renderer::create(&global_arena)) {
         global_arena.release();
         return -1;
     };
 
-    DEFER {
-        Renderer::Destroy();
+    defer {
+        renderer::destroy();
         global_arena.release();
     };
 
-    Platform::ShowWindow();
+    platform::show_window();
 
-    while (!Platform::ShouldWindowClose()) {
-        Platform::PollEvents();
+    while (!platform::should_window_close()) {
+        platform::poll_events();
     }
 
     return 0;

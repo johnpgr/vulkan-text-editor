@@ -1,10 +1,10 @@
 #pragma once
 
-namespace Platform {
+namespace platform {
 
-void CreateAudio(void);
-void DestroyAudio(void);
-void UpdateAudioBuffer(void);
-void SetAudioVolume(f32 volume);
+void create_audio(void);
+void destroy_audio(void);
+void update_audio_buffer(void);
+void set_audio_volume(f32 volume);
 
 }

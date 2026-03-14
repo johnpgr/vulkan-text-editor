@@ -10,13 +10,13 @@
 
 #include "platform/error.h"
 
-namespace Platform {
+namespace platform {
 
-inline void* ReserveMemory(u64 size) {
+inline void* reserve_memory(u64 size) {
 #if OS_WINDOWS
     void* ptr = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
     if (ptr == nullptr) {
-        Fail("VirtualAlloc reserve");
+        fail("VirtualAlloc reserve");
     }
     return ptr;
 #else
@@ -29,13 +29,13 @@ inline void* ReserveMemory(u64 size) {
     void* ptr =
         mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | map_anon_flag, -1, 0);
     if (ptr == MAP_FAILED) {
-        Fail("mmap reserve");
+        fail("mmap reserve");
     }
     return ptr;
 #endif
 }
 
-inline u64 GetPageSize(void) {
+inline u64 get_page_size(void) {
 #if OS_WINDOWS
     SYSTEM_INFO system_info = {};
     GetSystemInfo(&system_info);
@@ -50,7 +50,7 @@ inline u64 GetPageSize(void) {
 #endif
 }
 
-inline void CommitMemory(void* ptr, u64 size) {
+inline void commit_memory(void* ptr, u64 size) {
     if (size == 0) {
         return;
     }
@@ -58,35 +58,35 @@ inline void CommitMemory(void* ptr, u64 size) {
 #if OS_WINDOWS
     void* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
     if (result == nullptr) {
-        Fail("VirtualAlloc commit");
+        fail("VirtualAlloc commit");
     }
 #else
     if (mprotect(ptr, size, PROT_READ | PROT_WRITE) != 0) {
-        Fail("mprotect commit");
+        fail("mprotect commit");
     }
 #endif
 }
 
-inline void DecommitMemory(void* ptr, u64 size) {
+inline void decommit_memory(void* ptr, u64 size) {
     if (size == 0) {
         return;
     }
 
 #if OS_WINDOWS
     if (VirtualFree(ptr, size, MEM_DECOMMIT) == 0) {
-        Fail("VirtualFree decommit");
+        fail("VirtualFree decommit");
     }
 #else
     if (mprotect(ptr, size, PROT_NONE) != 0) {
-        Fail("mprotect decommit");
+        fail("mprotect decommit");
     }
     if (madvise(ptr, size, MADV_DONTNEED) != 0) {
-        Fail("madvise decommit");
+        fail("madvise decommit");
     }
 #endif
 }
 
-inline void ReleaseMemory(void* ptr, u64 size) {
+inline void release_memory(void* ptr, u64 size) {
 #if OS_WINDOWS
     (void)size;
     if (ptr == nullptr) {
@@ -94,7 +94,7 @@ inline void ReleaseMemory(void* ptr, u64 size) {
     }
 
     if (VirtualFree(ptr, 0, MEM_RELEASE) == 0) {
-        Fail("VirtualFree release");
+        fail("VirtualFree release");
     }
 #else
     if (ptr == nullptr || size == 0) {
@@ -102,7 +102,7 @@ inline void ReleaseMemory(void* ptr, u64 size) {
     }
 
     if (munmap(ptr, size) != 0) {
-        Fail("munmap release");
+        fail("munmap release");
     }
 #endif
 }

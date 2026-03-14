@@ -5,7 +5,7 @@
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
 
-namespace Platform {
+namespace platform {
 
 struct Win32PlatformState {
     HINSTANCE instance;
@@ -24,7 +24,7 @@ internal Win32PlatformState win32_state = {};
 internal Arena win32_scratch_arena = {};
 internal bool win32_scratch_initialized = false;
 
-void Fail(const char* message) {
+void fail(const char* message) {
     DWORD error = GetLastError();
     if (error != 0) {
         LOG_FATAL("%s failed with error %lu", message, (unsigned long)error);
@@ -34,15 +34,15 @@ void Fail(const char* message) {
     abort();
 }
 
-internal Arena* GetScratchWin32(void) {
+internal Arena* get_scratch_win32(void) {
     if (!win32_scratch_initialized) {
-        win32_scratch_arena = CreateArena();
+        win32_scratch_arena = Arena::create();
         win32_scratch_initialized = true;
     }
     return &win32_scratch_arena;
 }
 
-internal wchar_t* ToWideStringWin32(Arena* scratch, String text) {
+internal wchar_t* to_wide_string_win32(Arena* scratch, String text) {
     int utf8_length = (int)text.size;
     int wide_length = MultiByteToWideChar(
         CP_UTF8,
@@ -75,7 +75,7 @@ internal wchar_t* ToWideStringWin32(Arena* scratch, String text) {
     return result;
 }
 
-internal bool GetExecutableDirWin32(wchar_t* buffer, DWORD buffer_count) {
+internal bool get_executable_dir_win32(wchar_t* buffer, DWORD buffer_count) {
     DWORD length = GetModuleFileNameW(nullptr, buffer, buffer_count);
     if (length == 0 || length == buffer_count) {
         return false;
@@ -89,12 +89,12 @@ internal bool GetExecutableDirWin32(wchar_t* buffer, DWORD buffer_count) {
     return true;
 }
 
-internal bool TryLoadDynamicLibraryWin32(
+internal bool try_load_dynamic_library_win32(
     const wchar_t* path,
     HMODULE* out_library
 ) {
-    ASSERT(path != nullptr, "Library path must not be null!");
-    ASSERT(out_library != nullptr, "Output handle must not be null!");
+    assert(path != nullptr, "Library path must not be null!");
+    assert(out_library != nullptr, "Output handle must not be null!");
 
     HMODULE library = LoadLibraryW(path);
     if (!library) {
@@ -105,7 +105,7 @@ internal bool TryLoadDynamicLibraryWin32(
     return true;
 }
 
-internal DWORD GetWindowStyleWin32(void) {
+internal DWORD get_window_style_win32(void) {
     DWORD style = WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX;
     if (win32_state.resizable) {
         style |= WS_MAXIMIZEBOX | WS_THICKFRAME;
@@ -114,11 +114,11 @@ internal DWORD GetWindowStyleWin32(void) {
 }
 
 internal LRESULT CALLBACK
-WindowProcWin32(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+window_proc_win32(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
         case WM_CLOSE:
             win32_state.should_close = true;
-            ::DestroyWindow(hwnd);
+            ::destroy_window(hwnd);
             return 0;
         case WM_DESTROY:
             win32_state.window = nullptr;
@@ -134,7 +134,7 @@ WindowProcWin32(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     }
 }
 
-internal bool RegisterWindowClassWin32(void) {
+internal bool register_window_class_win32(void) {
     if (win32_state.class_registered) {
         return true;
     }
@@ -143,7 +143,7 @@ internal bool RegisterWindowClassWin32(void) {
     WNDCLASSEXW window_class = {};
     window_class.cbSize = sizeof(window_class);
     window_class.style = CS_HREDRAW | CS_VREDRAW;
-    window_class.lpfnWndProc = WindowProcWin32;
+    window_class.lpfnWndProc = window_proc_win32;
     window_class.hInstance = win32_state.instance;
     window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
@@ -154,7 +154,7 @@ internal bool RegisterWindowClassWin32(void) {
     return win32_state.class_registered;
 }
 
-internal String FromWidePathWin32(
+internal String from_wide_path_win32(
     Arena* arena,
     Arena* scratch,
     const wchar_t* path
@@ -169,7 +169,7 @@ internal String FromWidePathWin32(
         nullptr,
         nullptr
     );
-    ASSERT(utf8_length > 0, "Wide to UTF-8 conversion failed!");
+    assert(utf8_length > 0, "Wide to UTF-8 conversion failed!");
 
     char* buffer = scratch->push<char>((u64)utf8_length, alignof(char));
 
@@ -183,12 +183,12 @@ internal String FromWidePathWin32(
         nullptr,
         nullptr
     );
-    ASSERT(written == utf8_length, "Wide to UTF-8 conversion failed!");
+    assert(written == utf8_length, "Wide to UTF-8 conversion failed!");
 
-    return String::copy(arena, String::fromCstr(buffer));
+    return String::copy(arena, String::from_cstr(buffer));
 }
 
-internal ErrorCode GetCopyErrorWin32(DWORD error) {
+internal ErrorCode get_copy_error_win32(DWORD error) {
     switch (error) {
         case ERROR_FILE_NOT_FOUND:
         case ERROR_PATH_NOT_FOUND:
@@ -204,9 +204,9 @@ internal ErrorCode GetCopyErrorWin32(DWORD error) {
     }
 }
 
-void CreateWindow(String title, int width, int height) {
+void create_window(String title, int width, int height) {
     if (win32_state.initialized) {
-        DestroyWindow();
+        destroy_window();
     }
 
     win32_state.resizable = false;
@@ -214,7 +214,7 @@ void CreateWindow(String title, int width, int height) {
     win32_state.height = height;
     win32_state.should_close = false;
 
-    if (!RegisterWindowClassWin32()) {
+    if (!register_window_class_win32()) {
         DWORD error = GetLastError();
         LOG_FATAL(
             "RegisterClassExW failed with error %lu",
@@ -223,22 +223,22 @@ void CreateWindow(String title, int width, int height) {
         abort();
     }
 
-    Arena* scratch = GetScratchWin32();
+    Arena* scratch = get_scratch_win32();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    wchar_t* wide_title = ToWideStringWin32(
+    wchar_t* wide_title = to_wide_string_win32(
         scratch,
         title.size > 0 ? title : String::lit("cpp-gaming")
     );
     if (!wide_title) {
-        Fail("Window title conversion failed.");
+        fail("Window title conversion failed.");
     }
 
     RECT rect = {0, 0, width, height};
-    DWORD style = GetWindowStyleWin32();
+    DWORD style = get_window_style_win32();
     AdjustWindowRectEx(&rect, style, FALSE, 0);
 
     win32_state.window = CreateWindowExW(
@@ -269,13 +269,13 @@ void CreateWindow(String title, int width, int height) {
     win32_state.visible = false;
 }
 
-void DestroyWindow(void) {
+void destroy_window(void) {
     if (!win32_state.initialized) {
         return;
     }
 
     if (win32_state.window) {
-        ::DestroyWindow(win32_state.window);
+        ::destroy_window(win32_state.window);
         win32_state.window = nullptr;
     }
 
@@ -286,11 +286,11 @@ void DestroyWindow(void) {
     win32_state = {};
 }
 
-bool ShouldWindowClose(void) {
+bool should_window_close(void) {
     return win32_state.should_close;
 }
 
-void PollEvents(void) {
+void poll_events(void) {
     if (!win32_state.initialized) {
         return;
     }
@@ -305,18 +305,18 @@ void PollEvents(void) {
     }
 }
 
-void SetWindowTitle(String title) {
+void set_window_title(String title) {
     if (!win32_state.window) {
         return;
     }
 
-    Arena* scratch = GetScratchWin32();
+    Arena* scratch = get_scratch_win32();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    wchar_t* wide_title = ToWideStringWin32(scratch, title);
+    wchar_t* wide_title = to_wide_string_win32(scratch, title);
     if (!wide_title) {
         return;
     }
@@ -324,7 +324,7 @@ void SetWindowTitle(String title) {
     SetWindowTextW(win32_state.window, wide_title);
 }
 
-void GetWindowSize(int* width, int* height) {
+void get_window_size(int* width, int* height) {
     if (width) {
         *width = win32_state.width;
     }
@@ -333,7 +333,7 @@ void GetWindowSize(int* width, int* height) {
     }
 }
 
-void SetWindowSize(int width, int height) {
+void set_window_size(int width, int height) {
     if (!win32_state.window) {
         return;
     }
@@ -358,7 +358,7 @@ void SetWindowSize(int width, int height) {
     win32_state.height = height;
 }
 
-void SetWindowResizable(bool resizable) {
+void set_window_resizable(bool resizable) {
     win32_state.resizable = resizable;
     if (!win32_state.window) {
         return;
@@ -383,37 +383,37 @@ void SetWindowResizable(bool resizable) {
     );
 }
 
-void PresentWindow(void) {
+void present_window(void) {
     if (win32_state.window) {
         ::UpdateWindow(win32_state.window);
     }
 }
 
-void ShowWindow(void) {
+void show_window(void) {
     if (!win32_state.initialized || win32_state.visible ||
         !win32_state.window) {
         return;
     }
 
-    ::ShowWindow(win32_state.window, SW_SHOW);
+    ::show_window(win32_state.window, SW_SHOW);
     ::UpdateWindow(win32_state.window);
     win32_state.visible = true;
 }
 
-void CreateAudio(void) {
+void create_audio(void) {
 }
 
-void DestroyAudio(void) {
+void destroy_audio(void) {
 }
 
-void UpdateAudioBuffer(void) {
+void update_audio_buffer(void) {
 }
 
-void SetAudioVolume(f32 volume) {
+void set_audio_volume(f32 volume) {
     (void)volume;
 }
 
-bool LoadDynamicLibrary(
+bool load_dynamic_library(
     Arena* arena,
     String name,
     DynamicLibrary* out_library
@@ -425,18 +425,18 @@ bool LoadDynamicLibrary(
     *out_library = {};
     out_library->arena = arena;
 
-    Arena* scratch = GetScratchWin32();
+    Arena* scratch = get_scratch_win32();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    String filename = StringConcat(
+    String filename = String::concat(
         arena,
-        StringConcat(arena, GetDynamicLibraryPrefix(), name),
-        GetDynamicLibraryExtension()
+        String::concat(arena, get_dynamic_library_prefix(), name),
+        get_dynamic_library_extension()
     );
-    wchar_t* wide_filename = ToWideStringWin32(scratch, filename);
+    wchar_t* wide_filename = to_wide_string_win32(scratch, filename);
     if (!wide_filename) {
         *out_library = {};
         return false;
@@ -444,7 +444,7 @@ bool LoadDynamicLibrary(
 
     HMODULE module = nullptr;
     wchar_t path_buffer[MAX_PATH] = {};
-    if (GetExecutableDirWin32(path_buffer, MAX_PATH)) {
+    if (get_executable_dir_win32(path_buffer, MAX_PATH)) {
         wchar_t candidate[MAX_PATH] = {};
         _snwprintf_s(
             candidate,
@@ -454,9 +454,9 @@ bool LoadDynamicLibrary(
             path_buffer,
             wide_filename
         );
-        if (TryLoadDynamicLibraryWin32(candidate, &module)) {
+        if (try_load_dynamic_library_win32(candidate, &module)) {
             out_library->filename =
-                FromWidePathWin32(arena, scratch, candidate);
+                from_wide_path_win32(arena, scratch, candidate);
         }
     }
 
@@ -472,14 +472,14 @@ bool LoadDynamicLibrary(
                 path_buffer,
                 wide_filename
             );
-            if (TryLoadDynamicLibraryWin32(candidate, &module)) {
+            if (try_load_dynamic_library_win32(candidate, &module)) {
                 out_library->filename =
-                    FromWidePathWin32(arena, scratch, candidate);
+                    from_wide_path_win32(arena, scratch, candidate);
             }
         }
     }
 
-    if (!module && TryLoadDynamicLibraryWin32(wide_filename, &module)) {
+    if (!module && try_load_dynamic_library_win32(wide_filename, &module)) {
         out_library->filename = String::copy(arena, filename);
     }
 
@@ -492,11 +492,11 @@ bool LoadDynamicLibrary(
     out_library->internal_data = module;
     out_library->internal_data_size = sizeof(HMODULE);
     out_library->watch_id = 0;
-    out_library->functions = ArrayList<DynamicLibraryFunction>::make(arena);
+    out_library->functions = ArrayList<DynamicLibraryFunction>::create(arena);
     return true;
 }
 
-bool UnloadDynamicLibrary(DynamicLibrary* library) {
+bool unload_dynamic_library(DynamicLibrary* library) {
     if (!library || !library->internal_data) {
         return false;
     }
@@ -509,7 +509,7 @@ bool UnloadDynamicLibrary(DynamicLibrary* library) {
     return true;
 }
 
-void* LoadDynamicFunction(String name, DynamicLibrary* library) {
+void* load_dynamic_function(String name, DynamicLibrary* library) {
     if (!library || !library->internal_data || !library->arena ||
         name.size == 0) {
         return nullptr;
@@ -523,13 +523,13 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
         }
     }
 
-    Arena* scratch = GetScratchWin32();
+    Arena* scratch = get_scratch_win32();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    const char* symbol_name = name.toCstr(scratch);
+    const char* symbol_name = name.to_cstr(scratch);
     FARPROC symbol = GetProcAddress((HMODULE)library->internal_data, symbol_name);
     if (!symbol) {
         return nullptr;
@@ -542,27 +542,27 @@ void* LoadDynamicFunction(String name, DynamicLibrary* library) {
     return function.function;
 }
 
-String GetDynamicLibraryExtension(void) {
+String get_dynamic_library_extension(void) {
     return String::lit(".dll");
 }
 
-String GetDynamicLibraryPrefix(void) {
+String get_dynamic_library_prefix(void) {
     return String::lit("");
 }
 
-ErrorCode CopyFile(
+ErrorCode copy_file(
     String source,
     String dest,
     bool overwrite_if_exists
 ) {
-    Arena* scratch = GetScratchWin32();
+    Arena* scratch = get_scratch_win32();
     u64 scratch_mark = scratch->mark();
-    DEFER {
+    defer {
         scratch->restore(scratch_mark);
     };
 
-    wchar_t* wide_source = ToWideStringWin32(scratch, source);
-    wchar_t* wide_dest = ToWideStringWin32(scratch, dest);
+    wchar_t* wide_source = to_wide_string_win32(scratch, source);
+    wchar_t* wide_dest = to_wide_string_win32(scratch, dest);
     if (!wide_source || !wide_dest) {
         return ErrorCode::UNKNOWN;
     }
@@ -575,19 +575,19 @@ ErrorCode CopyFile(
         return ErrorCode::SUCCESS;
     }
 
-    return GetCopyErrorWin32(error);
+    return get_copy_error_win32(error);
 }
 
-ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena) {
-    ASSUME(arena != nullptr);
+ArrayList<const char*> get_vulkan_instance_extensions(Arena* arena) {
+    assume(arena != nullptr);
 
-    ArrayList<const char*> extensions = ArrayList<const char*>::make(arena);
+    ArrayList<const char*> extensions = ArrayList<const char*>::create(arena);
     extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
     extensions.push(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
     return extensions;
 }
 
-bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* out_surface) {
+bool create_vulkan_surface(VkInstance instance, VkSurfaceKHR* out_surface) {
     if (instance == VK_NULL_HANDLE || out_surface == nullptr ||
         win32_state.instance == nullptr || win32_state.window == nullptr) {
         return false;

@@ -38,33 +38,33 @@
 #endif
 
 #if OS_WINDOWS && defined(NDEBUG)
-#define MAIN int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+#define main int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
-#define MAIN int main(int, char**)
+#define main int main(int, char**)
 #endif
 
 #if OS_WINDOWS
-#define EXPORT extern "C" __declspec(dllexport)
+#define export extern "C" __declspec(dllexport)
 #else
-#define EXPORT extern "C"
+#define export extern "C"
 #endif
 
 #define IS_TRIVIAL_TYPE(T) (__is_trivial(T) && __is_trivially_copyable(T))
 
 #if COMPILER_MSVC
-#define ASSUME(expr) __assume(expr)
+#define assume(expr) __assume(expr)
 #elif COMPILER_CLANG || COMPILER_GCC
-#define ASSUME(expr)                                                                                                   \
+#define assume(expr)                                                                                                   \
     do {                                                                                                               \
         if (!(expr)) {                                                                                                 \
             __builtin_unreachable();                                                                                   \
         }                                                                                                              \
     } while (0)
 #else
-#define ASSUME(expr) ((void)0)
+#define assume(expr) ((void)0)
 #endif
 
-inline void DebugBreak() {
+inline void debug_break() {
 #if COMPILER_MSVC
     __debugbreak();
 #elif COMPILER_CLANG
@@ -85,21 +85,21 @@ template <typename F> struct Defer {
     F f;
 };
 
-template <typename F> Defer<F> MakeDefer(F f) {
+template <typename F> Defer<F> make_defer(F f) {
     return Defer<F>(f);
 };
 
 struct DeferDummy {};
 
 template <typename F> Defer<F> operator+(DeferDummy, F&& f) {
-    return MakeDefer<F>(std::forward<F>(f));
+    return make_defer<F>(std::forward<F>(f));
 }
 
-inline bool IsPow2(u64 value) {
+inline bool is_pow2(u64 value) {
     return value != 0 && (value & (value - 1)) == 0;
 }
 
-inline bool U64AddOverflow(u64 a, u64 b, u64* out) {
+inline bool u64_add_overflow(u64 a, u64 b, u64* out) {
 #if COMPILER_CLANG || COMPILER_GCC
     return __builtin_add_overflow(a, b, out);
 #else
@@ -113,7 +113,7 @@ inline bool U64AddOverflow(u64 a, u64 b, u64* out) {
 #endif
 }
 
-inline bool U64MulOverflow(u64 a, u64 b, u64* out) {
+inline bool u64_mul_overflow(u64 a, u64 b, u64* out) {
 #if COMPILER_CLANG || COMPILER_GCC
     return __builtin_mul_overflow(a, b, out);
 #else
@@ -127,14 +127,14 @@ inline bool U64MulOverflow(u64 a, u64 b, u64* out) {
 #endif
 }
 
-inline bool U64AlignUpPow2(u64 value, u64 alignment, u64* out) {
-    if (!IsPow2(alignment)) {
+inline bool u64_align_up_pow2(u64 value, u64 alignment, u64* out) {
+    if (!is_pow2(alignment)) {
         *out = 0;
         return true;
     }
 
     u64 sum = 0;
-    if (U64AddOverflow(value, alignment - 1, &sum)) {
+    if (u64_add_overflow(value, alignment - 1, &sum)) {
         *out = 0;
         return true;
     }
@@ -144,17 +144,17 @@ inline bool U64AlignUpPow2(u64 value, u64 alignment, u64* out) {
 }
 
 #ifndef NDEBUG
-#define ASSERT(expr, msg)                                                                                                \
+#define assert(expr, msg)                                                                                                \
     do {                                                                                                                 \
         if (!(expr)) {                                                                                                   \
             LOG_FATAL("assertion failed: %s - %s", #expr, msg);                                                          \
-            DebugBreak();                                                                                                \
+            debug_break();                                                                                                \
         }                                                                                                                \
     } while (0)
 #else
-#define ASSERT(expr, msg) ((void)sizeof((expr) ? true : false))
+#define assert(expr, msg) ((void)sizeof((expr) ? true : false))
 #endif
 
 #define CG_DEFER_NAME_IMPL(line) defer_##line
 #define CG_DEFER_NAME(line) CG_DEFER_NAME_IMPL(line)
-#define DEFER auto CG_DEFER_NAME(__LINE__) = DeferDummy() + [&]()
+#define defer auto CG_DEFER_NAME(__LINE__) = DeferDummy() + [&]()

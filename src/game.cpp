@@ -1,7 +1,7 @@
 #include "base/defines.h"
 
-EXPORT int GameTestSymbol(void);
+export int game_test_symbol(void);
 
-EXPORT int GameTestSymbol(void) {
+export int game_test_symbol(void) {
     return 1337;
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Log {
+namespace log {
 
 enum class LogLevel : u8 {
     Fatal = 0,
@@ -31,7 +31,7 @@ internal const char* LOG_LEVEL_TAGS[] = {
 
 internal const char* LOG_COLOR_RESET = "\033[0m";
 
-inline void WriteV(
+inline void write_v(
     LogLevel level,
     const char* file,
     int line,
@@ -39,7 +39,7 @@ inline void WriteV(
     va_list args
 ) __attribute__((format(printf, 4, 0)));
 
-inline void Write(
+inline void write(
     LogLevel level,
     const char* file,
     int line,
@@ -48,7 +48,7 @@ inline void Write(
 ) __attribute__((format(printf, 4, 5)));
 
 inline void
-WriteV(LogLevel level, const char* file, int line, const char* fmt, va_list args) {
+write_v(LogLevel level, const char* file, int line, const char* fmt, va_list args) {
     char msg[16384];
     va_list args_copy;
     va_copy(args_copy, args);
@@ -73,7 +73,7 @@ WriteV(LogLevel level, const char* file, int line, const char* fmt, va_list args
     (void)fputs(out, stream);
 }
 
-inline void Write(
+inline void write(
     LogLevel level,
     const char* file,
     int line,
@@ -82,20 +82,20 @@ inline void Write(
 ) {
     va_list args;
     va_start(args, fmt);
-    WriteV(level, file, line, fmt, args);
+    write_v(level, file, line, fmt, args);
     va_end(args);
 }
 
 }
 
-#define LOG_FATAL(...) Log::Write(Log::LogLevel::Fatal, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_ERROR(...) Log::Write(Log::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_WARN(...) Log::Write(Log::LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_INFO(...) Log::Write(Log::LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...) log::write(log::LogLevel::Fatal, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) log::write(log::LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) log::write(log::LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) log::write(log::LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
 
 #ifndef NDEBUG
-#define LOG_DEBUG(...) Log::Write(Log::LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_TRACE(...) Log::Write(Log::LogLevel::Trace, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) log::write(log::LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE(...) log::write(log::LogLevel::Trace, __FILE__, __LINE__, __VA_ARGS__)
 #else
 #define LOG_DEBUG(...) ((void)0)
 #define LOG_TRACE(...) ((void)0)

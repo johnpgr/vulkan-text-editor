@@ -7,9 +7,6 @@
 #define GB (MB * KB)
 #define TB (GB * KB)
 
-#define WIDTH 800
-#define HEIGHT 600
-
 #include <utility>
 #include <stdarg.h>
 #include <stddef.h>

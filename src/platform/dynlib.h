@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Platform {
+namespace platform {
 
 struct DynamicLibraryFunction {
     String name;
@@ -18,45 +18,45 @@ struct DynamicLibrary {
     ArrayList<DynamicLibraryFunction> functions;
 };
 
-bool LoadDynamicLibrary(
+bool load_dynamic_library(
     Arena* arena,
     String name,
     DynamicLibrary* out_library
 );
 
 template <u64 N>
-inline bool LoadDynamicLibrary(
+inline bool load_dynamic_library(
     Arena* arena,
     const char (&name)[N],
     DynamicLibrary* out_library
 ) {
-    return LoadDynamicLibrary(arena, {(const u8*)name, N - 1}, out_library);
+    return load_dynamic_library(arena, {(const u8*)name, N - 1}, out_library);
 }
 
-inline bool LoadDynamicLibrary(
+inline bool load_dynamic_library(
     Arena* arena,
     const char* name,
     DynamicLibrary* out_library
 ) {
-    return LoadDynamicLibrary(arena, String::fromCstr(name), out_library);
+    return load_dynamic_library(arena, String::from_cstr(name), out_library);
 }
 
-bool UnloadDynamicLibrary(DynamicLibrary* library);
-void* LoadDynamicFunction(String name, DynamicLibrary* library);
+bool unload_dynamic_library(DynamicLibrary* library);
+void* load_dynamic_function(String name, DynamicLibrary* library);
 
 template <u64 N>
-inline void* LoadDynamicFunction(
+inline void* load_dynamic_function(
     const char (&name)[N],
     DynamicLibrary* library
 ) {
-    return LoadDynamicFunction({(const u8*)name, N - 1}, library);
+    return load_dynamic_function({(const u8*)name, N - 1}, library);
 }
 
-inline void* LoadDynamicFunction(const char* name, DynamicLibrary* library) {
-    return LoadDynamicFunction(String::fromCstr(name), library);
+inline void* load_dynamic_function(const char* name, DynamicLibrary* library) {
+    return load_dynamic_function(String::from_cstr(name), library);
 }
 
-String GetDynamicLibraryExtension(void);
-String GetDynamicLibraryPrefix(void);
+String get_dynamic_library_extension(void);
+String get_dynamic_library_prefix(void);
 
 }

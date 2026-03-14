@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Platform {
+namespace platform {
 
 enum class ErrorCode : u8 {
     SUCCESS = 0,
@@ -10,6 +10,6 @@ enum class ErrorCode : u8 {
     FILE_EXISTS = 4
 };
 
-void Fail(const char* message);
+void fail(const char* message);
 
 }

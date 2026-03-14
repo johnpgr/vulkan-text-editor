@@ -1,9 +1,9 @@
 #pragma once
 
-namespace Platform {
+namespace platform {
 
-ArrayList<const char*> GetVulkanInstanceExtensions(Arena* arena);
+ArrayList<const char*> get_vulkan_instance_extensions(Arena* arena);
 
-bool CreateVulkanSurface(VkInstance instance, VkSurfaceKHR* out_surface);
+bool create_vulkan_surface(VkInstance instance, VkSurfaceKHR* out_surface);
 
 }
