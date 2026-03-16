@@ -2,6 +2,7 @@
 
 #define internal static
 
+#define BIT(x) (1ULL << (x))
 #define KB 1024ULL
 #define MB (KB * KB)
 #define GB (MB * KB)
