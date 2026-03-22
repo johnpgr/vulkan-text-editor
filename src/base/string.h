@@ -6,55 +6,57 @@
 
 #include "base/arena.h"
 
-struct String;
-inline String StringCopy(Arena* arena, String source);
-
 struct String {
-    const u8* str;
+    u8 const *str;
     u64 size;
-
-    // Slice: String sub = my_str.substring(0, 5);
-    String substring(u64 start, u64 end) const {
-        u64 safe_end = (end > size) ? size : end;
-        u64 safe_start = (start > safe_end) ? safe_end : start;
-        const u8* start_ptr = (str != nullptr) ? (str + safe_start) : nullptr;
-        String result = {start_ptr, safe_end - safe_start};
-        return result;
-    }
-
-    // Check equality
-    bool equals(String other) const {
-        if (size != other.size) return false;
-        if (size == 0) return true;
-        return memcmp(str, other.str, size) == 0;
-    }
-
-    // Interop with C APIs: fopen(my_str.toCstr(arena), "rb");
-    const char* toCstr(Arena* arena) const {
-        return (const char*)StringCopy(arena, *this).str;
-    }
 };
 
-inline String StringLit(const char* s) {
+inline String
+string_substring(String source, u64 start, u64 end) {
+    u64 safe_end = (end > source.size) ? source.size : end;
+    u64 safe_start = (start > safe_end) ? safe_end : start;
+    u8 const *start_ptr =
+        (source.str != nullptr) ? (source.str + safe_start) : nullptr;
+    String result = {start_ptr, safe_end - safe_start};
+    return result;
+}
+
+inline b32
+string_equals(String a, String b) {
+    if(a.size != b.size) {
+        return false;
+    }
+
+    if(a.size == 0) {
+        return true;
+    }
+
+    return memcmp(a.str, b.str, a.size) == 0;
+}
+
+inline String
+string_lit(char const *s) {
     assert(s != nullptr, "String literal source must not be null!");
-    String result = {(const u8*)s, (u64)strlen(s)};
+    String result = {(u8 const *)s, (u64)strlen(s)};
     return result;
 }
 
-inline String StringFromCstr(const char* s) {
+inline String
+string_from_cstr(char const *s) {
     assert(s != nullptr, "String source must not be null!");
-    String result = {(const u8*)s, (u64)strlen(s)};
+    String result = {(u8 const *)s, (u64)strlen(s)};
     return result;
 }
 
-inline String StringCopy(Arena* arena, String source) {
+inline String
+string_copy(Arena *arena, String source) {
     String result = {};
     result.size = source.size;
     u64 buffer_size = 0;
-    bool size_overflow = AddU64Overflow(source.size, 1ULL, &buffer_size);
+    bool size_overflow = add_u64_overflow(source.size, 1ULL, &buffer_size);
     assert(!size_overflow, "String copy size overflow!");
-    u8* buffer = arena->push<u8>(buffer_size);
-    if (source.size > 0) {
+    u8 *buffer = push_array(arena, buffer_size, u8);
+    if(source.size > 0) {
         assert(source.str != nullptr, "String source must not be null!");
         memcpy(buffer, source.str, source.size);
     }
@@ -63,14 +65,21 @@ inline String StringCopy(Arena* arena, String source) {
     return result;
 }
 
-inline String StringCopyCstr(Arena* arena, const char* source) {
-    return StringCopy(arena, StringFromCstr(source));
+inline char const *
+string_to_cstr(Arena *arena, String source) {
+    return (char const *)string_copy(arena, source).str;
 }
 
-inline String StringFmt(Arena* arena, const char* format, ...)
+inline String
+string_copy_cstr(Arena *arena, char const *source) {
+    return string_copy(arena, string_from_cstr(source));
+}
+
+inline String string_fmt(Arena *arena, char const *format, ...)
     __attribute__((format(printf, 2, 3)));
 
-inline String StringFmt(Arena* arena, const char* format, ...) {
+inline String
+string_fmt(Arena *arena, char const *format, ...) {
     va_list args;
     va_start(args, format);
 
@@ -83,30 +92,30 @@ inline String StringFmt(Arena* arena, const char* format, ...) {
     String result = {};
     result.size = (u64)size_needed;
     u64 buffer_size = 0;
-    bool buffer_overflow = AddU64Overflow(result.size, 1ULL, &buffer_size);
+    bool buffer_overflow = add_u64_overflow(result.size, 1ULL, &buffer_size);
     assert(!buffer_overflow, "String formatting size overflow!");
-    u8* buffer = arena->push<u8>(buffer_size);
-    int size_written = vsnprintf((char*)buffer, buffer_size, format, args);
+    u8 *buffer = push_array(arena, buffer_size, u8);
+    int size_written = vsnprintf((char *)buffer, buffer_size, format, args);
     assert(size_written == size_needed, "String formatting length mismatch!");
     result.str = buffer;
     va_end(args);
     return result;
 }
 
-inline String StringConcat(Arena* arena, String a, String b) {
+inline String
+string_concat(Arena *arena, String a, String b) {
     String result = {};
-    bool size_overflow = AddU64Overflow(a.size, b.size, &result.size);
+    bool size_overflow = add_u64_overflow(a.size, b.size, &result.size);
     assert(!size_overflow, "String concatenation size overflow!");
     u64 buffer_size = 0;
-    bool buffer_overflow =
-        AddU64Overflow(result.size, 1ULL, &buffer_size);
+    bool buffer_overflow = add_u64_overflow(result.size, 1ULL, &buffer_size);
     assert(!buffer_overflow, "String concatenation size overflow!");
-    u8* buffer = arena->push<u8>(buffer_size);
-    if (a.size > 0) {
+    u8 *buffer = push_array(arena, buffer_size, u8);
+    if(a.size > 0) {
         assert(a.str != nullptr, "Left string source must not be null!");
         memcpy(buffer, a.str, a.size);
     }
-    if (b.size > 0) {
+    if(b.size > 0) {
         assert(b.str != nullptr, "Right string source must not be null!");
         memcpy(buffer + a.size, b.str, b.size);
     }

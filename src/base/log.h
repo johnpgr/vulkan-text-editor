@@ -14,7 +14,7 @@ enum LogLevel : u8 {
     LOG_LEVEL_TRACE = 5,
 };
 
-static const char* LOG_LEVEL_COLORS[] = {
+global_variable char const *log_level_colors[] = {
     "\033[1;41m",
     "\033[1;31m",
     "\033[1;33m",
@@ -23,7 +23,7 @@ static const char* LOG_LEVEL_COLORS[] = {
     "\033[0;90m",
 };
 
-static const char* LOG_LEVEL_TAGS[] = {
+global_variable char const *log_level_tags[] = {
     "[FATAL]",
     "[ERROR]",
     "[WARN]",
@@ -32,26 +32,32 @@ static const char* LOG_LEVEL_TAGS[] = {
     "[TRACE]",
 };
 
-static const char* LOG_COLOR_RESET = "\033[0m";
+global_variable char const *log_color_reset = "\033[0m";
 
-inline void LogWriteV(
+inline void log_write_v(
     LogLevel level,
-    const char* file,
+    char const *file,
     int line,
-    const char* fmt,
+    char const *fmt,
     va_list args
 ) __attribute__((format(printf, 4, 0)));
 
-inline void LogWrite(
+inline void log_write(
     LogLevel level,
-    const char* file,
+    char const *file,
     int line,
-    const char* fmt,
+    char const *fmt,
     ...
 ) __attribute__((format(printf, 4, 5)));
 
 inline void
-LogWriteV(LogLevel level, const char* file, int line, const char* fmt, va_list args) {
+log_write_v(
+    LogLevel level,
+    char const *file,
+    int line,
+    char const *fmt,
+    va_list args
+) {
     char msg[16384];
     va_list args_copy;
     va_copy(args_copy, args);
@@ -64,39 +70,38 @@ LogWriteV(LogLevel level, const char* file, int line, const char* fmt, va_list a
         out,
         sizeof(out),
         "%s%s %s:%d: %s%s\n",
-        LOG_LEVEL_COLORS[level_index],
-        LOG_LEVEL_TAGS[level_index],
+        log_level_colors[level_index],
+        log_level_tags[level_index],
         file,
         line,
         msg,
-        LOG_COLOR_RESET
+        log_color_reset
     );
 
-    FILE* stream = level_index <= (usize)LOG_LEVEL_ERROR ? stderr : stdout;
+    FILE *stream = level_index <= (usize)LOG_LEVEL_ERROR ? stderr : stdout;
     (void)fputs(out, stream);
 }
 
-inline void LogWrite(
-    LogLevel level,
-    const char* file,
-    int line,
-    const char* fmt,
-    ...
-) {
+inline void
+log_write(LogLevel level, char const *file, int line, char const *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    LogWriteV(level, file, line, fmt, args);
+    log_write_v(level, file, line, fmt, args);
     va_end(args);
 }
 
-#define LOG_FATAL(...) LogWrite(LOG_LEVEL_FATAL, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_ERROR(...) LogWrite(LOG_LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_WARN(...) LogWrite(LOG_LEVEL_WARN, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_INFO(...) LogWrite(LOG_LEVEL_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...)                                                         \
+    log_write(LOG_LEVEL_FATAL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...)                                                         \
+    log_write(LOG_LEVEL_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) log_write(LOG_LEVEL_WARN, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) log_write(LOG_LEVEL_INFO, __FILE__, __LINE__, __VA_ARGS__)
 
 #ifndef NDEBUG
-#define LOG_DEBUG(...) LogWrite(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_TRACE(...) LogWrite(LOG_LEVEL_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...)                                                         \
+    log_write(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE(...)                                                         \
+    log_write(LOG_LEVEL_TRACE, __FILE__, __LINE__, __VA_ARGS__)
 #else
 #define LOG_DEBUG(...) ((void)0)
 #define LOG_TRACE(...) ((void)0)

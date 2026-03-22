@@ -9,124 +9,137 @@
 // Costs nothing in physical RAM until committed.
 #define ARENA_RESERVE_SIZE (1 * TB)
 
-inline u64 AlignUp(u64 value, u64 alignment) {
+struct Arena {
+    u8 *base;
+    u64 capacity;
+    u64 committed;
+    u64 chunk_size;
+    u64 pos;
+    s32 temp_count;
+};
+
+struct TemporaryMemory {
+    Arena *arena;
+    u64 pos;
+};
+
+#define push_struct(arena, type)                                               \
+    (type *)push_size_(arena, sizeof(type), alignof(type))
+#define push_array(arena, count, type)                                         \
+    (type *)push_size_(arena, (count) * sizeof(type), alignof(type))
+#define push_size(arena, size) push_size_(arena, size, 4)
+
+internal u64
+align_up(u64 value, u64 alignment) {
     assert(alignment != 0, "Arena alignment must be non-zero!");
-    assert(IsPow2(alignment), "Arena alignment must be a power of two!");
+    assert(is_pow2(alignment), "Arena alignment must be a power of two!");
 
     u64 result = 0;
-    bool overflow = AlignUpPow2U64(value, alignment, &result);
+    b32 overflow = align_up_pow2_u64(value, alignment, &result);
     assert(!overflow, "Arena alignment overflow!");
     return result;
 }
 
-struct Arena {
-    u8* base;
-    u64 capacity;  // Total Virtual Address Space
-    u64 committed; // Total Physical RAM Backed
-    u64 chunk_size;
-    u64 pos; // Current "Bump" position
+internal void *
+allocate_and_commit(Arena *arena, u64 size) {
+    assert(arena != nullptr, "Arena must not be null!");
 
-    // --- The Master Generic Push ---
-    // Usage: my_arena.push<Entity>();
-    // Usage: my_arena.push<Vertex>(100);
-    // Usage: my_arena.push<float4>(1, 16); // 16-byte alignment for SIMD
-    template <typename T> T* push(u64 count = 1, u64 alignment = alignof(T)) {
-        static_assert(
-            IS_TRIVIAL_TYPE(T),
-            "Arena-backed storage only supports trivial, trivially copyable types"
-        );
+    u64 new_pos = 0;
+    b32 overflow = add_u64_overflow(arena->pos, size, &new_pos);
+    assert(!overflow, "Arena position overflow!");
+    assert(new_pos <= arena->capacity, "Virtual address space exhausted!");
 
-        u64 required_alignment =
-            alignment > alignof(T) ? alignment : (u64)alignof(T);
-        assert(
-            required_alignment &&
-                !(required_alignment & (required_alignment - 1)),
-            "Arena push alignment must be a power of two!"
-        );
-
-        u64 size = 0;
-        bool size_overflow = MulU64Overflow(sizeof(T), count, &size);
-        assert(!size_overflow, "Arena push size overflow!");
-
-        return (T*)pushBytes(size, required_alignment);
+    if(new_pos > arena->committed) {
+        u64 needed = new_pos - arena->committed;
+        u64 commit_size = align_up(needed, arena->chunk_size);
+        commit_system_memory(arena->base + arena->committed, commit_size);
+        arena->committed += commit_size;
     }
 
-    void* pushBytes(u64 size, u64 alignment) {
-        assert(alignment != 0, "Arena push alignment must be non-zero!");
-        assert(IsPow2(alignment), "Arena push alignment must be a power of two!");
+    void *result = arena->base + arena->pos;
+    arena->pos = new_pos;
+    return result;
+}
 
-        u64 current_ptr = (u64)(base + pos);
-        u64 padding =
-            (alignment - (current_ptr & (alignment - 1))) &
-            (alignment - 1);
+internal void *
+push_size_(Arena *arena, u64 size, u64 alignment) {
+    assert(arena != nullptr, "Arena must not be null!");
+    assert(alignment != 0, "Arena push alignment must be non-zero!");
+    assert(is_pow2(alignment), "Arena push alignment must be a power of two!");
 
-        u64 total_size = 0;
-        bool total_overflow = AddU64Overflow(size, padding, &total_size);
-        assert(!total_overflow, "Arena push size overflow!");
+    u64 current_ptr = (u64)(arena->base + arena->pos);
+    u64 padding =
+        (alignment - (current_ptr & (alignment - 1))) & (alignment - 1);
 
-        u8* result_with_padding = (u8*)allocateAndCommit(total_size);
-        void* aligned_result = result_with_padding + padding;
-        memset(aligned_result, 0, size);
-        return aligned_result;
-    }
+    u64 total_size = 0;
+    b32 overflow = add_u64_overflow(size, padding, &total_size);
+    assert(!overflow, "Arena push size overflow!");
 
-    // Internal: Moves the pointer and handles OS commits
-    void* allocateAndCommit(u64 size) {
-        u64 new_pos = 0;
-        bool pos_overflow = AddU64Overflow(pos, size, &new_pos);
-        assert(!pos_overflow, "Arena position overflow!");
-        assert(new_pos <= capacity, "Virtual Address Space Exhausted!");
+    u8 *result_with_padding = (u8 *)allocate_and_commit(arena, total_size);
+    void *result = result_with_padding + padding;
+    memset(result, 0, size);
+    return result;
+}
 
-        if (new_pos > committed) {
-            u64 needed = new_pos - committed;
-            u64 commit_size = AlignUp(needed, chunk_size);
+internal TemporaryMemory
+begin_temporary_memory(Arena *arena) {
+    assert(arena != nullptr, "Arena must not be null!");
 
-            CommitSystemMemory(base + committed, commit_size);
-            committed += commit_size;
-        }
+    TemporaryMemory result = {};
+    result.arena = arena;
+    result.pos = arena->pos;
+    ++arena->temp_count;
+    return result;
+}
 
-        void* result = base + pos;
-        pos = new_pos;
-        return result;
-    }
-
-    // Save and restore checkpoints for temporary allocations.
-    u64 mark() {
-        return pos;
-    }
-
-    void restore(u64 old_pos) {
-        assert(old_pos <= pos, "Arena restore position is out of range!");
-        pos = old_pos;
-    }
-
-    void clear() {
-        pos = 0;
-    }
-
-    void release() {
-        if (base != nullptr && capacity != 0) {
-            ReleaseSystemMemory(base, capacity);
-        }
-        *this = {};
-    }
-
-};
-
-inline Arena CreateArena(u64 chunk_size = 4 * KB) {
-    Arena arena = {};
-    u64 page_size = GetSystemPageSize();
-    arena.capacity = ARENA_RESERVE_SIZE;
-    arena.chunk_size = AlignUp(
-        chunk_size != 0u ? chunk_size : page_size,
-        page_size
+internal void
+end_temporary_memory(TemporaryMemory temporary_memory) {
+    Arena *arena = temporary_memory.arena;
+    assert(arena != nullptr, "Temporary arena must not be null!");
+    assert(
+        arena->pos >= temporary_memory.pos,
+        "Arena restore position is out of range!"
     );
-    arena.base = (u8*)ReserveSystemMemory(arena.capacity);
+    assert(arena->temp_count > 0, "Arena temporary memory count underflow!");
 
-    if (arena.chunk_size > 0) {
-        // Commit one growth chunk up front to avoid first-use OS spikes.
-        arena.allocateAndCommit(arena.chunk_size);
-        arena.pos = 0; // Reset pos as we just "warmed up" the memory
+    arena->pos = temporary_memory.pos;
+    --arena->temp_count;
+}
+
+internal void
+clear_arena(Arena *arena) {
+    assert(arena != nullptr, "Arena must not be null!");
+    assert(
+        arena->temp_count == 0,
+        "Cannot clear arena with outstanding temporary memory!"
+    );
+    arena->pos = 0;
+}
+
+internal void
+release_arena(Arena *arena) {
+    assert(arena != nullptr, "Arena must not be null!");
+
+    if(arena->base != nullptr && arena->capacity != 0) {
+        release_system_memory(arena->base, arena->capacity);
+    }
+
+    *arena = {};
+}
+
+internal Arena
+create_arena(u64 chunk_size = 4 * KB) {
+    Arena arena = {};
+    u64 page_size = get_system_page_size();
+
+    arena.capacity = ARENA_RESERVE_SIZE;
+    arena.chunk_size =
+        align_up(chunk_size != 0 ? chunk_size : page_size, page_size);
+    arena.base = (u8 *)reserve_system_memory(arena.capacity);
+
+    if(arena.chunk_size > 0) {
+        allocate_and_commit(&arena, arena.chunk_size);
+        arena.pos = 0;
     }
 
     return arena;
