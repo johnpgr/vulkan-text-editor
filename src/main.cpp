@@ -50,6 +50,10 @@ struct FrameLoopState {
     volatile bool running;
     volatile bool frame_failed;
     f64 last_counter;
+    f64 update_sample_seconds;
+    u32 update_sample_frames;
+    f64 present_sample_seconds;
+    u32 present_sample_frames;
 };
 
 struct LaneThreadParams {
@@ -189,6 +193,44 @@ internal void init_render_commands(
     }
 }
 
+internal void accumulate_fps_sample(
+    f64 dt_for_frame,
+    f64 *sample_seconds,
+    u32 *sample_frames
+) {
+    assert(sample_seconds != nullptr, "Sample seconds must not be null!");
+    assert(sample_frames != nullptr, "Sample frames must not be null!");
+
+    *sample_seconds += dt_for_frame;
+    ++*sample_frames;
+}
+
+internal void maybe_log_fps(FrameLoopState *frame_loop_state) {
+    assert(frame_loop_state != nullptr, "Frame loop state must not be null!");
+
+    f64 const log_interval_seconds = 2.0;
+    if(frame_loop_state->update_sample_seconds < log_interval_seconds &&
+       frame_loop_state->present_sample_seconds < log_interval_seconds) {
+        return;
+    }
+
+    f64 update_fps = frame_loop_state->update_sample_seconds > 0.0
+                         ? (f64)frame_loop_state->update_sample_frames /
+                               frame_loop_state->update_sample_seconds
+                         : 0.0;
+    f64 present_fps = frame_loop_state->present_sample_seconds > 0.0
+                          ? (f64)frame_loop_state->present_sample_frames /
+                                frame_loop_state->present_sample_seconds
+                          : 0.0;
+
+    LOG_INFO("FPS update=%.2f present=%.2f", update_fps, present_fps);
+
+    frame_loop_state->update_sample_seconds = 0.0;
+    frame_loop_state->update_sample_frames = 0;
+    frame_loop_state->present_sample_seconds = 0.0;
+    frame_loop_state->present_sample_frames = 0;
+}
+
 internal void handle_main_lane(FrameLoopState *frame_loop_state) {
     if(lane_idx() != 0) {
         return;
@@ -201,10 +243,15 @@ internal void handle_main_lane(FrameLoopState *frame_loop_state) {
     }
 
     f64 current_counter = glfwGetTime();
+    f64 dt_for_frame = current_counter - frame_loop_state->last_counter;
     *frame_loop_state->input = {};
-    frame_loop_state->input->dt_for_frame =
-        (f32)(current_counter - frame_loop_state->last_counter);
+    frame_loop_state->input->dt_for_frame = (f32)dt_for_frame;
     frame_loop_state->last_counter = current_counter;
+    accumulate_fps_sample(
+        dt_for_frame,
+        &frame_loop_state->update_sample_seconds,
+        &frame_loop_state->update_sample_frames
+    );
     update_input(frame_loop_state->window, frame_loop_state->input);
 
     if(!begin_frame()) {
@@ -257,10 +304,22 @@ internal void run_frame_loop(LaneThreadParams *params) {
         );
 
         bool render_ok = render_group_to_output(commands);
-        if(lane_idx() == 0 && !render_ok) {
+        if(lane_idx() != 0) {
+            continue;
+        }
+
+        if(!render_ok) {
             frame_loop_state->frame_failed = true;
             frame_loop_state->running = false;
+            continue;
         }
+
+        accumulate_fps_sample(
+            (f64)frame_loop_state->input->dt_for_frame,
+            &frame_loop_state->present_sample_seconds,
+            &frame_loop_state->present_sample_frames
+        );
+        maybe_log_fps(frame_loop_state);
     }
 }
 
