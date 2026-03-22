@@ -32,15 +32,13 @@ struct SwapchainSupportInfo {
     u32 present_mode_count;
 };
 
-internal char const *
-get_glfw_error_string(void) {
+internal char const *get_glfw_error_string(void) {
     char const *description = nullptr;
     glfwGetError(&description);
     return description != nullptr ? description : "Unknown GLFW error";
 }
 
-internal u32
-get_target_api_version(void) {
+internal u32 get_target_api_version(void) {
     u32 api_version = VK_API_VERSION_1_0;
     PFN_vkEnumerateInstanceVersion enumerate_instance_version =
         (PFN_vkEnumerateInstanceVersion)
@@ -54,8 +52,7 @@ get_target_api_version(void) {
     return VK_API_VERSION_1_0;
 }
 
-internal bool
-has_instance_extension(Arena *arena, char const *extension_name) {
+internal bool has_instance_extension(Arena *arena, char const *extension_name) {
     assume(arena != nullptr);
     assume(extension_name != nullptr);
 
@@ -95,8 +92,10 @@ has_instance_extension(Arena *arena, char const *extension_name) {
     return found;
 }
 
-internal char const **
-get_instance_extensions(Arena *arena, u32 *out_extension_count) {
+internal char const **get_instance_extensions(
+    Arena *arena,
+    u32 *out_extension_count
+) {
     assume(arena != nullptr);
     assume(out_extension_count != nullptr);
 
@@ -148,8 +147,7 @@ get_instance_extensions(Arena *arena, u32 *out_extension_count) {
     return extensions;
 }
 
-internal bool
-has_layer(Arena *arena, char const *layer_name) {
+internal bool has_layer(Arena *arena, char const *layer_name) {
     assume(arena != nullptr);
     assume(layer_name != nullptr);
 
@@ -182,8 +180,7 @@ has_layer(Arena *arena, char const *layer_name) {
 }
 
 #ifndef NDEBUG
-internal VKAPI_ATTR VkBool32 VKAPI_CALL
-debug_callback(
+internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_types,
     VkDebugUtilsMessengerCallbackDataEXT const *callback_data,
@@ -212,8 +209,7 @@ debug_callback(
     return VK_FALSE;
 }
 
-internal void
-build_debug_messenger_create_info(
+internal void build_debug_messenger_create_info(
     VkDebugUtilsMessengerCreateInfoEXT *out_create_info
 ) {
     assume(out_create_info != nullptr);
@@ -230,8 +226,7 @@ build_debug_messenger_create_info(
     out_create_info->pfnUserCallback = debug_callback;
 }
 
-internal bool
-create_debug_messenger(void) {
+internal bool create_debug_messenger(void) {
     PFN_vkCreateDebugUtilsMessengerEXT create_debug_utils_messenger =
         (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
             vk_state.instance,
@@ -253,8 +248,7 @@ create_debug_messenger(void) {
 }
 #endif
 
-internal bool
-has_device_extension(
+internal bool has_device_extension(
     Arena *arena,
     VkPhysicalDevice physical_device,
     char const *extension_name
@@ -301,8 +295,10 @@ has_device_extension(
     return found;
 }
 
-internal bool
-supports_dynamic_rendering(Arena *arena, VkPhysicalDevice physical_device) {
+internal bool supports_dynamic_rendering(
+    Arena *arena,
+    VkPhysicalDevice physical_device
+) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
 
@@ -340,8 +336,7 @@ supports_dynamic_rendering(Arena *arena, VkPhysicalDevice physical_device) {
            dynamic_rendering_features.dynamicRendering == VK_TRUE;
 }
 
-internal bool
-find_graphics_queue_family(
+internal bool find_graphics_queue_family(
     Arena *arena,
     VkPhysicalDevice physical_device,
     u32 *out_queue_family_index
@@ -397,8 +392,7 @@ find_graphics_queue_family(
     return found;
 }
 
-internal u32
-score_device(Arena *arena, VkPhysicalDevice physical_device) {
+internal u32 score_device(Arena *arena, VkPhysicalDevice physical_device) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
 
@@ -434,8 +428,7 @@ score_device(Arena *arena, VkPhysicalDevice physical_device) {
     return score;
 }
 
-internal bool
-query_swapchain_support(
+internal bool query_swapchain_support(
     Arena *arena,
     VkPhysicalDevice physical_device,
     SwapchainSupportInfo *out_info
@@ -514,8 +507,7 @@ choose_surface_format(SwapchainSupportInfo *support) {
     return support->formats[0];
 }
 
-internal VkPresentModeKHR
-choose_present_mode(SwapchainSupportInfo *support) {
+internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo *support) {
     assume(support != nullptr);
 
     for(u32 index = 0; index < support->present_mode_count; ++index) {
@@ -527,8 +519,7 @@ choose_present_mode(SwapchainSupportInfo *support) {
     return support->present_modes[0];
 }
 
-internal VkExtent2D
-choose_swapchain_extent(SwapchainSupportInfo *support) {
+internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo *support) {
     assume(support != nullptr);
 
     if(support->capabilities.currentExtent.width != UINT32_MAX) {
@@ -563,8 +554,10 @@ choose_swapchain_extent(SwapchainSupportInfo *support) {
     return extent;
 }
 
-internal bool
-get_executable_directory_for_renderer(char *buffer, u64 buffer_size) {
+internal bool get_executable_directory_for_renderer(
+    char *buffer,
+    u64 buffer_size
+) {
     assert(buffer != nullptr, "Executable path buffer must not be null!");
     assert(buffer_size > 0, "Executable path buffer must not be empty!");
 
@@ -593,8 +586,11 @@ get_executable_directory_for_renderer(char *buffer, u64 buffer_size) {
     return true;
 }
 
-internal bool
-build_shader_path(char *buffer, u64 buffer_size, char const *file_name) {
+internal bool build_shader_path(
+    char *buffer,
+    u64 buffer_size,
+    char const *file_name
+) {
     assert(buffer != nullptr, "Shader path buffer must not be null!");
     assert(file_name != nullptr, "Shader file name must not be null!");
 
@@ -616,8 +612,7 @@ build_shader_path(char *buffer, u64 buffer_size, char const *file_name) {
     return written > 0 && (u64)written < buffer_size;
 }
 
-internal void *
-read_binary_file(Arena *arena, char const *path, u64 *out_size) {
+internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
     assert(arena != nullptr, "Arena must not be null!");
     assert(path != nullptr, "File path must not be null!");
     assert(out_size != nullptr, "Size output must not be null!");
@@ -655,8 +650,10 @@ read_binary_file(Arena *arena, char const *path, u64 *out_size) {
     return data;
 }
 
-internal bool
-create_shader_module(char const *file_name, VkShaderModule *out_shader_module) {
+internal bool create_shader_module(
+    char const *file_name,
+    VkShaderModule *out_shader_module
+) {
     assert(file_name != nullptr, "Shader file name must not be null!");
     assert(
         out_shader_module != nullptr,
@@ -694,8 +691,7 @@ create_shader_module(char const *file_name, VkShaderModule *out_shader_module) {
     return result;
 }
 
-internal void
-cleanup_pipeline(void) {
+internal void cleanup_pipeline(void) {
     if(vk_state.sprite_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(vk_state.device, vk_state.sprite_pipeline, nullptr);
         vk_state.sprite_pipeline = VK_NULL_HANDLE;
@@ -710,8 +706,7 @@ cleanup_pipeline(void) {
     }
 }
 
-internal bool
-create_pipeline(void) {
+internal bool create_pipeline(void) {
     VkShaderModule vertex_shader_module = VK_NULL_HANDLE;
     VkShaderModule fragment_shader_module = VK_NULL_HANDLE;
     bool result = false;
@@ -858,8 +853,7 @@ cleanup:
     return result;
 }
 
-internal bool
-wait_for_nonzero_framebuffer(void) {
+internal bool wait_for_nonzero_framebuffer(void) {
     int framebuffer_width = 0;
     int framebuffer_height = 0;
 
@@ -881,8 +875,7 @@ wait_for_nonzero_framebuffer(void) {
     return true;
 }
 
-internal bool
-create_swapchain(void) {
+internal bool create_swapchain(void) {
     TemporaryMemory temporary_memory = begin_temporary_memory(vk_state.arena);
     SwapchainSupportInfo support = {};
     if(!query_swapchain_support(
@@ -976,8 +969,7 @@ create_swapchain(void) {
     return true;
 }
 
-internal void
-cleanup_swapchain(void) {
+internal void cleanup_swapchain(void) {
     for(u32 image_index = 0;
         image_index < ARRAY_COUNT(vk_state.swapchain_views);
         ++image_index) {
@@ -1002,8 +994,7 @@ cleanup_swapchain(void) {
     vk_state.swapchain_image_count = 0;
 }
 
-internal bool
-recreate_swapchain(void) {
+internal bool recreate_swapchain(void) {
     if(!wait_for_nonzero_framebuffer()) {
         return false;
     }
@@ -1025,8 +1016,7 @@ recreate_swapchain(void) {
     return true;
 }
 
-internal bool
-create_command_buffers(u32 lane_count) {
+internal bool create_command_buffers(u32 lane_count) {
     assert(lane_count > 0, "Lane count must be non-zero!");
     assert(lane_count <= MAX_LANES, "Lane count exceeds MAX_LANES!");
 
@@ -1088,8 +1078,7 @@ create_command_buffers(u32 lane_count) {
     return true;
 }
 
-internal void
-cleanup_command_buffers(void) {
+internal void cleanup_command_buffers(void) {
     for(u32 lane_index = 0; lane_index < ARRAY_COUNT(vk_state.lane_pools);
         ++lane_index) {
         if(vk_state.lane_pools[lane_index] != VK_NULL_HANDLE) {
@@ -1110,8 +1099,7 @@ cleanup_command_buffers(void) {
     }
 }
 
-internal vec4
-get_clear_color(RenderCommands *commands) {
+internal vec4 get_clear_color(RenderCommands *commands) {
     vec4 result = vec4(0.04f, 0.05f, 0.08f, 1.0f);
 
     for(u32 lane_index = 0; lane_index < commands->active_lane_count;
@@ -1133,8 +1121,7 @@ get_clear_color(RenderCommands *commands) {
     return result;
 }
 
-internal void
-transition_swapchain_image(
+internal void transition_swapchain_image(
     VkCommandBuffer command_buffer,
     VkImage image,
     VkImageLayout old_layout,
@@ -1171,8 +1158,7 @@ transition_swapchain_image(
     );
 }
 
-internal bool
-pick_physical_device(Arena *arena) {
+internal bool pick_physical_device(Arena *arena) {
     assume(arena != nullptr);
 
     u32 physical_device_count = 0;
@@ -1213,8 +1199,7 @@ pick_physical_device(Arena *arena) {
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
-internal bool
-create_device(Arena *arena) {
+internal bool create_device(Arena *arena) {
     assume(arena != nullptr);
     assume(vk_state.physical_device != VK_NULL_HANDLE);
 
@@ -1305,8 +1290,7 @@ create_device(Arena *arena) {
            vk_state.graphics_queue != VK_NULL_HANDLE;
 }
 
-internal bool
-load_dynamic_rendering_functions(void) {
+internal bool load_dynamic_rendering_functions(void) {
     vk_state.cmd_begin_rendering = (PFN_vkCmdBeginRenderingKHR)
         vkGetDeviceProcAddr(vk_state.device, "vkCmdBeginRenderingKHR");
     if(vk_state.cmd_begin_rendering == nullptr) {
@@ -1325,8 +1309,7 @@ load_dynamic_rendering_functions(void) {
            vk_state.cmd_end_rendering != nullptr;
 }
 
-internal bool
-create_frame_sync_objects(void) {
+internal bool create_frame_sync_objects(void) {
     VkSemaphoreCreateInfo semaphore_info = {};
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1339,13 +1322,16 @@ create_frame_sync_objects(void) {
         return false;
     }
 
-    if(vkCreateSemaphore(
-           vk_state.device,
-           &semaphore_info,
-           nullptr,
-           &vk_state.render_finished_semaphore
-       ) != VK_SUCCESS) {
-        return false;
+    for(u32 image_index = 0; image_index < MAX_SWAPCHAIN_IMAGES;
+        ++image_index) {
+        if(vkCreateSemaphore(
+               vk_state.device,
+               &semaphore_info,
+               nullptr,
+               &vk_state.render_finished_semaphores[image_index]
+           ) != VK_SUCCESS) {
+            return false;
+        }
     }
 
     VkFenceCreateInfo fence_info = {};
@@ -1360,19 +1346,21 @@ create_frame_sync_objects(void) {
            ) == VK_SUCCESS;
 }
 
-internal void
-cleanup_frame_sync_objects(void) {
+internal void cleanup_frame_sync_objects(void) {
     if(vk_state.frame_fence != VK_NULL_HANDLE) {
         vkDestroyFence(vk_state.device, vk_state.frame_fence, nullptr);
         vk_state.frame_fence = VK_NULL_HANDLE;
     }
-    if(vk_state.render_finished_semaphore != VK_NULL_HANDLE) {
-        vkDestroySemaphore(
-            vk_state.device,
-            vk_state.render_finished_semaphore,
-            nullptr
-        );
-        vk_state.render_finished_semaphore = VK_NULL_HANDLE;
+    for(u32 image_index = 0; image_index < MAX_SWAPCHAIN_IMAGES;
+        ++image_index) {
+        if(vk_state.render_finished_semaphores[image_index] != VK_NULL_HANDLE) {
+            vkDestroySemaphore(
+                vk_state.device,
+                vk_state.render_finished_semaphores[image_index],
+                nullptr
+            );
+            vk_state.render_finished_semaphores[image_index] = VK_NULL_HANDLE;
+        }
     }
     if(vk_state.image_available_semaphore != VK_NULL_HANDLE) {
         vkDestroySemaphore(
@@ -1384,8 +1372,7 @@ cleanup_frame_sync_objects(void) {
     }
 }
 
-bool
-begin_frame(void) {
+bool begin_frame(void) {
     if(vk_state.fatal_error) {
         return false;
     }
@@ -1469,8 +1456,7 @@ begin_frame(void) {
     return true;
 }
 
-internal bool
-vulkan_record_commands(RenderCommands *commands) {
+internal bool vulkan_record_commands(RenderCommands *commands) {
     assert(commands != nullptr, "Render commands must not be null!");
 
     if(!vk_state.frame_active || vk_state.fatal_error) {
@@ -1566,13 +1552,15 @@ vulkan_record_commands(RenderCommands *commands) {
     return true;
 }
 
-internal bool
-end_frame(RenderCommands *commands) {
+internal bool end_frame(RenderCommands *commands) {
     assert(commands != nullptr, "Render commands must not be null!");
 
     if(!vk_state.frame_active || vk_state.fatal_error) {
         return !vk_state.fatal_error;
     }
+
+    VkSemaphore render_finished_semaphore =
+        vk_state.render_finished_semaphores[vk_state.frame_image_index];
 
     VkCommandBufferBeginInfo begin_info = {};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1655,7 +1643,7 @@ end_frame(RenderCommands *commands) {
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &vk_state.primary_cmd;
     submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &vk_state.render_finished_semaphore;
+    submit_info.pSignalSemaphores = &render_finished_semaphore;
 
     if(vkQueueSubmit(
            vk_state.graphics_queue,
@@ -1670,7 +1658,7 @@ end_frame(RenderCommands *commands) {
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores = &vk_state.render_finished_semaphore;
+    present_info.pWaitSemaphores = &render_finished_semaphore;
     present_info.swapchainCount = 1;
     present_info.pSwapchains = &vk_state.swapchain;
     present_info.pImageIndices = &vk_state.frame_image_index;
@@ -1692,8 +1680,7 @@ end_frame(RenderCommands *commands) {
     return true;
 }
 
-bool
-render_group_to_output(RenderCommands *commands) {
+bool render_group_to_output(RenderCommands *commands) {
     assert(commands != nullptr, "Render commands must not be null!");
 
     bool result = true;
@@ -1717,8 +1704,7 @@ render_group_to_output(RenderCommands *commands) {
     return !vk_state.fatal_error;
 }
 
-void
-cleanup_vulkan(void) {
+void cleanup_vulkan(void) {
     if(vk_state.device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(vk_state.device);
         cleanup_command_buffers();
@@ -1760,8 +1746,7 @@ cleanup_vulkan(void) {
     vk_state = {};
 }
 
-bool
-init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
+bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
     assert(arena != nullptr, "Vulkan arena must not be null!");
     assert(window != nullptr, "Vulkan window must not be null!");
     assert(lane_count > 0, "Lane count must be non-zero!");

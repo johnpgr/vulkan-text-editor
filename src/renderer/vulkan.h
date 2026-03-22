@@ -49,7 +49,7 @@ struct VulkanState {
     VkCommandBuffer primary_cmd;
 
     VkSemaphore image_available_semaphore;
-    VkSemaphore render_finished_semaphore;
+    VkSemaphore render_finished_semaphores[MAX_SWAPCHAIN_IMAGES];
     VkFence frame_fence;
 
     VkPipelineLayout pipeline_layout;
