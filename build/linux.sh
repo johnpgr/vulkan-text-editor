@@ -24,7 +24,7 @@ esac
 mkdir -p "$BIN_DIR"
 
 COMMON_FLAGS=(
-  -std=c++17
+  -std=c++11
   -Wall
   -Wextra
   -Werror
