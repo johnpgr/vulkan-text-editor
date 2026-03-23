@@ -5,136 +5,149 @@
 #include "base/core.h"
 #include "base/memory.h"
 
-// 1 Terabyte of virtual address space reservation.
-// Costs nothing in physical RAM until committed.
-#ifndef ARENA_RESERVE_SIZE
-#define ARENA_RESERVE_SIZE (1 * TB)
-#endif
+// Arena header lives in the first 128 bytes of each reserved block.
+// The rest of the block is usable memory.
+#define ARENA_HEADER_SIZE 128
+#define ARENA_DEFAULT_RESERVE (64 * MB)
+#define ARENA_DEFAULT_COMMIT  (64 * KB)
 
 struct Arena {
-    u8 *base;
-    u64 capacity;
-    u64 committed;
-    u64 chunk_size;
-    u64 pos;
-    i32 temp_count;
+    Arena *prev;      // previous block in chain (null on head block)
+    Arena *current;   // points to the newest (current) block (only valid on head)
+    u64    res_size;  // reserve size for new blocks
+    u64    cmt_size;  // commit granule for new blocks
+    u64    base_pos;  // byte offset of this block's start in the global chain
+    u64    pos;       // current write position within this block
+    u64    cmt;       // committed bytes in this block
+    u64    res;       // reserved bytes in this block
 };
+static_assert(sizeof(Arena) <= ARENA_HEADER_SIZE, "Arena header exceeds ARENA_HEADER_SIZE");
 
-struct TemporaryMemory {
+struct Temp {
     Arena *arena;
-    u64 pos;
+    u64    pos;
 };
 
-#define push_struct(arena, type)                                               \
-    (type *)push_size_(arena, sizeof(type), alignof(type))
-#define push_array(arena, count, type)                                         \
-    (type *)push_size_(arena, (count) * sizeof(type), alignof(type))
-#define push_size(arena, size) push_size_(arena, size, 4)
+// --- helpers ---
 
 internal u64 align_up(u64 value, u64 alignment) {
-    assert(alignment != 0, "Arena alignment must be non-zero!");
-    assert(is_pow2(alignment), "Arena alignment must be a power of two!");
-
+    assert(alignment != 0, "alignment must be non-zero");
+    assert(is_pow2(alignment), "alignment must be pow2");
     u64 result = 0;
     bool overflow = align_up_pow2_u64(value, alignment, &result);
-    assert(!overflow, "Arena alignment overflow!");
+    assert(!overflow, "alignment overflow");
     return result;
 }
 
-internal void *allocate_and_commit(Arena *arena, u64 size) {
-    assert(arena != nullptr, "Arena must not be null!");
+// --- core API ---
 
-    u64 new_pos = 0;
-    bool overflow = add_u64_overflow(arena->pos, size, &new_pos);
-    assert(!overflow, "Arena position overflow!");
-    assert(new_pos <= arena->capacity, "Virtual address space exhausted!");
+internal Arena *arena_alloc(u64 res_size = ARENA_DEFAULT_RESERVE,
+                             u64 cmt_size = ARENA_DEFAULT_COMMIT) {
+    u64 page = get_system_page_size();
+    res_size = align_up(res_size, page);
+    cmt_size = align_up(cmt_size, page);
+    if(cmt_size > res_size) cmt_size = res_size;
 
-    if(new_pos > arena->committed) {
-        u64 needed = new_pos - arena->committed;
-        u64 commit_size = align_up(needed, arena->chunk_size);
-        commit_system_memory(arena->base + arena->committed, commit_size);
-        arena->committed += commit_size;
-    }
+    void *mem = reserve_system_memory(res_size);
+    commit_system_memory(mem, cmt_size);
 
-    void *result = arena->base + arena->pos;
-    arena->pos = new_pos;
-    return result;
-}
-
-internal void *push_size_(Arena *arena, u64 size, u64 alignment) {
-    assert(arena != nullptr, "Arena must not be null!");
-    assert(alignment != 0, "Arena push alignment must be non-zero!");
-    assert(is_pow2(alignment), "Arena push alignment must be a power of two!");
-
-    u64 current_ptr = (u64)(arena->base + arena->pos);
-    u64 padding =
-        (alignment - (current_ptr & (alignment - 1))) & (alignment - 1);
-
-    u64 total_size = 0;
-    bool overflow = add_u64_overflow(size, padding, &total_size);
-    assert(!overflow, "Arena push size overflow!");
-
-    u8 *result_with_padding = (u8 *)allocate_and_commit(arena, total_size);
-    void *result = result_with_padding + padding;
-    memset(result, 0, size);
-    return result;
-}
-
-internal TemporaryMemory begin_temporary_memory(Arena *arena) {
-    assert(arena != nullptr, "Arena must not be null!");
-
-    TemporaryMemory result = {};
-    result.arena = arena;
-    result.pos = arena->pos;
-    ++arena->temp_count;
-    return result;
-}
-
-internal void end_temporary_memory(TemporaryMemory temporary_memory) {
-    Arena *arena = temporary_memory.arena;
-    assert(arena != nullptr, "Temporary arena must not be null!");
-    assert(
-        arena->pos >= temporary_memory.pos,
-        "Arena restore position is out of range!"
-    );
-    assert(arena->temp_count > 0, "Arena temporary memory count underflow!");
-
-    arena->pos = temporary_memory.pos;
-    --arena->temp_count;
-}
-
-internal void clear_arena(Arena *arena) {
-    assert(arena != nullptr, "Arena must not be null!");
-    assert(
-        arena->temp_count == 0,
-        "Cannot clear arena with outstanding temporary memory!"
-    );
-    arena->pos = 0;
-}
-
-internal void release_arena(Arena *arena) {
-    assert(arena != nullptr, "Arena must not be null!");
-
-    if(arena->base != nullptr && arena->capacity != 0) {
-        release_system_memory(arena->base, arena->capacity);
-    }
-
-    *arena = {};
-}
-
-internal Arena create_arena(u64 chunk_size = 4 * KB) {
-    Arena arena = {};
-    u64 page_size = get_system_page_size();
-
-    arena.capacity = ARENA_RESERVE_SIZE;
-    arena.chunk_size =
-        align_up(chunk_size != 0 ? chunk_size : page_size, page_size);
-    arena.base = (u8 *)reserve_system_memory(arena.capacity);
-
-    if(arena.chunk_size > 0) {
-        allocate_and_commit(&arena, arena.chunk_size);
-        arena.pos = 0;
-    }
-
+    Arena *arena  = (Arena *)mem;
+    arena->prev     = nullptr;
+    arena->current  = arena;
+    arena->res_size = res_size;
+    arena->cmt_size = cmt_size;
+    arena->base_pos = 0;
+    arena->pos      = ARENA_HEADER_SIZE;
+    arena->cmt      = cmt_size;
+    arena->res      = res_size;
     return arena;
 }
+
+internal void arena_release(Arena *arena) {
+    assert(arena != nullptr, "arena must not be null");
+    for(Arena *block = arena->current, *prev = nullptr; block != nullptr; block = prev) {
+        prev = block->prev;
+        release_system_memory(block, block->res);
+    }
+}
+
+internal void *arena_push(Arena *arena, u64 size, u64 align, bool zero) {
+    assert(arena != nullptr, "arena must not be null");
+    Arena *current = arena->current;
+
+    u64 pos_pre = align_up(current->pos, align);
+    u64 pos_post = pos_pre + size;
+
+    // chain a new block if current is full
+    if(pos_post > current->res) {
+        u64 new_res = current->res_size;
+        u64 new_cmt = current->cmt_size;
+        // if the single allocation is larger than the default block, resize
+        if(size + ARENA_HEADER_SIZE > new_res) {
+            u64 page = get_system_page_size();
+            new_res = align_up(size + ARENA_HEADER_SIZE, page);
+            new_cmt = new_res;
+        }
+        Arena *block = arena_alloc(new_res, new_cmt);
+        block->base_pos = current->base_pos + current->res;
+        block->res_size = current->res_size;
+        block->cmt_size = current->cmt_size;
+        SLLStackPush_N(arena->current, block, prev);
+        current  = block;
+        pos_pre  = align_up(current->pos, align);
+        pos_post = pos_pre + size;
+    }
+
+    // commit more pages if needed
+    if(pos_post > current->cmt) {
+        u64 new_cmt = align_up(pos_post, current->cmt_size);
+        if(new_cmt > current->res) new_cmt = current->res;
+        commit_system_memory((u8 *)current + current->cmt, new_cmt - current->cmt);
+        current->cmt = new_cmt;
+    }
+
+    void *result = (u8 *)current + pos_pre;
+    current->pos = pos_post;
+    if(zero) memset(result, 0, size);
+    return result;
+}
+
+internal u64 arena_pos(Arena *arena) {
+    assert(arena != nullptr, "arena must not be null");
+    return arena->current->base_pos + arena->current->pos;
+}
+
+internal void arena_pop_to(Arena *arena, u64 pos) {
+    assert(arena != nullptr, "arena must not be null");
+    u64 big_pos = pos < ARENA_HEADER_SIZE ? (u64)ARENA_HEADER_SIZE : pos;
+    Arena *current = arena->current;
+    while(current->base_pos >= big_pos) {
+        Arena *prev = current->prev;
+        release_system_memory(current, current->res);
+        current = prev;
+    }
+    arena->current = current;
+    u64 new_pos = big_pos - current->base_pos;
+    assert(new_pos <= current->pos, "arena_pop_to: new_pos out of range");
+    current->pos = new_pos;
+}
+
+internal void arena_clear(Arena *arena) {
+    arena_pop_to(arena, 0);
+}
+
+internal Temp temp_begin(Arena *arena) {
+    assert(arena != nullptr, "arena must not be null");
+    return {arena, arena_pos(arena)};
+}
+
+internal void temp_end(Temp t) {
+    arena_pop_to(t.arena, t.pos);
+}
+
+// --- push helpers ---
+
+#define push_struct(arena, T)                  (T *)arena_push((arena), sizeof(T), alignof(T), 1)
+#define push_array(arena, T, count)            (T *)arena_push((arena), sizeof(T)*(count), alignof(T), 1)
+#define push_array_no_zero(arena, T, count)    (T *)arena_push((arena), sizeof(T)*(count), alignof(T), 0)
+#define push_size(arena, size)                 arena_push((arena), (size), 8, 1)

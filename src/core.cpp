@@ -2,10 +2,12 @@
 
 #include "input.h"
 #include "push_cmds.cpp"
+#include "text_buffer.h"
 
 struct EditorState {
     Arena *permanent_arena;
     Arena *transient_arena;
+    TextDocument *document;
     i32 cursor_column;
     i32 cursor_row;
     f32 blink_timer;
@@ -24,50 +26,108 @@ internal void init_editor_state(
     *state = {};
     state->permanent_arena = permanent_arena;
     state->transient_arena = transient_arena;
-    state->dirty = true;
+    state->document        = text_document_create(permanent_arena, {});
+    state->dirty           = true;
+}
+
+// Convert cursor (row, col) to a logical byte offset in the document.
+internal u64 cursor_to_offset(EditorState *state) {
+    return text_point_to_offset(state->document, (u64)state->cursor_row, (u64)state->cursor_column);
+}
+
+// Sync cursor (row, col) from a logical byte offset.
+internal void cursor_from_offset(EditorState *state, u64 offset) {
+    TextPoint pt = text_offset_to_point(state->document, offset);
+    state->cursor_row    = (i32)pt.line;
+    state->cursor_column = (i32)pt.col;
 }
 
 internal void move_cursor(EditorState *state, EditorInput *input) {
     assert(state != nullptr, "Editor state must not be null!");
     assert(input != nullptr, "Editor input must not be null!");
 
-    i32 max_columns = 0;
-    i32 max_rows = 0;
-    if(input->window_width > 128) {
-        max_columns = (i32)((input->window_width - 96) / 14);
-    }
-    if(input->window_height > 144) {
-        max_rows = (i32)((input->window_height - 112) / 28);
+    u64 line_count = text_line_count(state->document);
+    i32 max_rows   = line_count > 0 ? (i32)(line_count - 1) : 0;
+
+    // Handle char input: insert UTF-8 encoded codepoints
+    for(u32 i = 0; i < input->char_input_count; ++i) {
+        u32 cp = input->char_inputs[i];
+        u8 utf8[4];
+        u32 utf8_len = 0;
+        if(cp < 0x80) {
+            utf8[utf8_len++] = (u8)cp;
+        } else if(cp < 0x800) {
+            utf8[utf8_len++] = (u8)(0xC0 | (cp >> 6));
+            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+        } else if(cp < 0x10000) {
+            utf8[utf8_len++] = (u8)(0xE0 | (cp >> 12));
+            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+        } else {
+            utf8[utf8_len++] = (u8)(0xF0 | (cp >> 18));
+            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 12) & 0x3F));
+            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+        }
+        u64 offset = cursor_to_offset(state);
+        text_insert(state->document, offset, utf8, utf8_len);
+        cursor_from_offset(state, offset + utf8_len);
+        state->dirty = true;
     }
 
     bool moved = false;
     for(u32 event_index = 0; event_index < input->key_event_count; ++event_index) {
         KeyEvent *event = input->key_events + event_index;
         switch(event->key) {
+            case GLFW_KEY_BACKSPACE: {
+                u64 offset = cursor_to_offset(state);
+                if(offset > 0) {
+                    // Step back one UTF-8 codepoint
+                    u64 doc_size = text_content_size(state->document);
+                    (void)doc_size;
+                    u64 del_offset = offset - 1;
+                    // Already at a byte boundary since cursor tracks codepoints
+                    text_delete(state->document, del_offset, 1);
+                    cursor_from_offset(state, del_offset);
+                    state->dirty = true;
+                }
+            } break;
+
+            case GLFW_KEY_ENTER: {
+                u64 offset = cursor_to_offset(state);
+                u8 newline = '\n';
+                text_insert(state->document, offset, &newline, 1);
+                cursor_from_offset(state, offset + 1);
+                state->dirty = true;
+            } break;
+
             case GLFW_KEY_LEFT: {
-                --state->cursor_column;
+                u64 offset = cursor_to_offset(state);
+                if(offset > 0) cursor_from_offset(state, offset - 1);
                 moved = true;
             } break;
 
             case GLFW_KEY_RIGHT: {
-                ++state->cursor_column;
+                u64 offset = cursor_to_offset(state);
+                if(offset < text_content_size(state->document))
+                    cursor_from_offset(state, offset + 1);
                 moved = true;
             } break;
 
             case GLFW_KEY_UP: {
-                --state->cursor_row;
+                if(state->cursor_row > 0) --state->cursor_row;
                 moved = true;
             } break;
 
             case GLFW_KEY_DOWN: {
-                ++state->cursor_row;
+                if(state->cursor_row < max_rows) ++state->cursor_row;
                 moved = true;
             } break;
         }
     }
 
-    state->cursor_column = clamp(state->cursor_column, 0, max_columns);
-    state->cursor_row = clamp(state->cursor_row, 0, max_rows);
+    state->cursor_row    = clamp(state->cursor_row, 0, max_rows);
+    state->cursor_column = clamp(state->cursor_column, 0, 4096);
 
     if(moved || input->char_input_count > 0 || input->scroll_delta != 0.0f) {
         state->blink_timer = 0.0f;

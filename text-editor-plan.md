@@ -8,10 +8,10 @@ This plan transforms the game engine into the editor in 8 phases. Each phase pro
 
 ### Key Decisions
 - **Types**: Keep `i8/u8` (existing convention), not `s8/u8` from spec
-- **Arena**: Keep 1TB virtual reserve model from `arena.h`, make reserve size and chunk_size configurable via defines
+- **Arena**: Raddebugger-style chained blocks (64MB reserve / 64KB commit default). Header lives in first block (`ARENA_HEADER_SIZE=128`). Auto-chains when current block full. `arena_alloc()` / `arena_release()` / `arena_push()` / `arena_pop_to()` / `arena_clear()` / `temp_begin()` / `temp_end()`.
 - **Font rendering**: Slug (MIT/Apache-2.0 dual-licensed). Ref repo has shaders only — no font compiler. We build the full CPU-side pipeline (TTF→curve/band textures) + manual GLSL port of the two HLSL shaders
 - **Font source**: System font discovery at runtime (no bundled font file)
-- **Text buffer**: Rope from the start (B-tree based, arena-allocated)
+- **Text buffer**: SumTree rope (Zed-style B+ tree, `src/text_buffer.h`). Text in leaf chunks (128 bytes). Summaries (`{bytes, lines, utf16_units}`) aggregate up for O(log n) offset↔line. Free list recycling (SLLStackPush/Pop) for node/leaf reuse.
 - **Multi-buffer/splits**: Deferred to post-Phase 8
 - **Windows**: `build.bat` added in Phase 0 — keep Windows compiling from day one
 
@@ -46,11 +46,11 @@ This plan transforms the game engine into the editor in 8 phases. Each phase pro
 - `build/win32.bat` — MSVC build script: `cl /std:c++latest` compiling `main.cpp`, linking `glfw3.lib`, `vulkan-1.lib`. Shader compilation step. Debug/release modes. Mirror structure of macos.sh.
 
 ### Reuse
-- `src/base/core.h` — as-is (compiler/OS detection, assert)
+- `src/base/core.h` — added DLL/SLLQueue/SLLStack linked list macros (raddebugger style)
 - `src/base/memory.h` — as-is (reserve/commit/decommit/release)
-- `src/base/arena.h` — as-is (1TB virtual reserve, lazy commit, push_struct/push_array)
+- `src/base/arena.h` — rewritten to raddebugger chained-block style (see Key Decisions). `push_array(arena, T, count)` param order.
 - `src/base/log.h` — as-is
-- `src/base/string.h` — as-is
+- `src/base/string.h` — updated 3 `push_array` calls to new param order
 - `src/base/threads/` — as-is (needed later for highlight thread + worker pool)
 - `assets/shaders/sprite.vert`, `sprite.frag` — keep temporarily for rect rendering
 
@@ -80,20 +80,22 @@ This plan transforms the game engine into the editor in 8 phases. Each phase pro
 
 ---
 
-## Phase 2: Rope Data Structure
+## Phase 2: Text Buffer — SumTree Rope ✅ COMPLETE
 
 **Goal**: UTF-8 rope with insert/delete/line-query. No text rendering yet — validate via LOG_DEBUG.
 
-### Create
-- `src/rope.cpp`:
-  - `struct RopeNode { u8 *text; u32 len; u32 subtree_bytes; u32 subtree_newlines; RopeNode *left, *right; u32 height; }` (AVL-balanced)
-  - `struct Rope { RopeNode *root; u64 version; Arena *arena; }`
-  - Core ops: `rope_init()`, `rope_insert(Rope*, u64 byte_offset, u8*, u64 len)`, `rope_delete(Rope*, u64 byte_offset, u64 len)`, `rope_total_bytes()`, `rope_line_count()`, `rope_line_byte_range(Rope*, u64 line, u64 *start, u64 *end)`, `rope_copy_range(Rope*, u64 start, u64 end, u8 *dst, u64 cap)`
-  - UTF-8 helpers: `utf8_decode()`, `utf8_encode()`, `utf8_byte_count()`
-  - Each mutation bumps `rope.version`
+### Created
+- `src/text_buffer.h` — SumTree B+ tree (Zed-style):
+  - `TextSummary { bytes, lines, utf16_units }` — monoid aggregated up tree
+  - `TextChunk` — 128-byte leaf chunks with precomputed summary
+  - `TextLeaf` / `TextNode` — B+ tree nodes (base=6, cap=12), doubly-linked leaf list
+  - `TextDocument` — root, leaf list, total summary, free lists for node/leaf recycling
+  - `text_document_create`, `text_insert`, `text_delete`
+  - `text_offset_to_point`, `text_point_to_offset`, `text_line_content`
+  - `text_content_size`, `text_line_count`
 
-### Modify
-- `src/core.cpp` — `EditorState` gets `Rope document`. Char input → `rope_insert()`. Backspace/Delete → `rope_delete()`. Arrow keys update cursor byte offset.
+### Modified
+- `src/core.cpp` — `EditorState` gets `TextDocument *document`. Char input → `text_insert`. Backspace → `text_delete`. Arrow keys use `cursor_to_offset` / `cursor_from_offset`.
 
 ### Verify
 ```bash
@@ -332,11 +334,11 @@ If Slug shader porting proves too complex in one pass, temporarily use stb_truet
 ### Keep as-is
 | File | Purpose |
 |---|---|
-| `src/base/core.h` | Compiler/OS detection, assert, bit ops |
+| `src/base/core.h` | Compiler/OS detection, assert, bit ops + DLL/SLL macros (added Ph0) |
 | `src/base/memory.h` | Platform virtual memory (mmap/VirtualAlloc) |
-| `src/base/arena.h` | 1TB virtual reserve arena (make ARENA_RESERVE_SIZE configurable) |
+| `src/base/arena.h` | Raddebugger chained-block arena (rewritten Ph0) |
 | `src/base/log.h` | 6-level logging |
-| `src/base/string.h` | Non-owning String, arena ops |
+| `src/base/string.h` | Non-owning String, arena ops (push_array param order updated Ph0) |
 | `src/base/threads/` | Thread, Mutex, CondVar (POSIX + Win32) |
 
 ### Delete
@@ -356,7 +358,7 @@ If Slug shader porting proves too complex in one pass, temporarily use stb_truet
 | `src/push_cmds.cpp` | 0 |
 | `src/input.h` | 1 |
 | `src/core.cpp` | 1 |
-| `src/rope.cpp` | 2 |
+| `src/text_buffer.h` | 2 |
 | `src/font.cpp` | 3 |
 | `src/layout.cpp` | 3 |
 | `assets/shaders/glyph.vert` | 3 |

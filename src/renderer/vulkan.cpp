@@ -66,9 +66,9 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     VkExtensionProperties *extensions =
-        push_array(arena, extension_count, VkExtensionProperties);
+        push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateInstanceExtensionProperties(
         nullptr,
@@ -76,7 +76,7 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         extensions
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -88,7 +88,7 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
@@ -122,7 +122,7 @@ internal char const **get_instance_extensions(
 #endif
 
     u32 extension_count = glfw_extension_count + extra_extension_count;
-    char const **extensions = push_array(arena, extension_count, char const *);
+    char const **extensions = push_array(arena, char const *, extension_count);
 
     u32 extension_index = 0;
     for(u32 glfw_index = 0; glfw_index < glfw_extension_count; ++glfw_index) {
@@ -157,13 +157,13 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     VkLayerProperties *layers =
-        push_array(arena, layer_count, VkLayerProperties);
+        push_array(arena, VkLayerProperties, layer_count);
 
     result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -175,7 +175,7 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
@@ -268,9 +268,9 @@ internal bool has_device_extension(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     VkExtensionProperties *extensions =
-        push_array(arena, extension_count, VkExtensionProperties);
+        push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateDeviceExtensionProperties(
         physical_device,
@@ -279,7 +279,7 @@ internal bool has_device_extension(
         extensions
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -291,7 +291,7 @@ internal bool has_device_extension(
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
@@ -355,9 +355,9 @@ internal bool find_graphics_queue_family(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     VkQueueFamilyProperties *queue_families =
-        push_array(arena, queue_family_count, VkQueueFamilyProperties);
+        push_array(arena, VkQueueFamilyProperties, queue_family_count);
 
     vkGetPhysicalDeviceQueueFamilyProperties(
         physical_device,
@@ -388,7 +388,7 @@ internal bool find_graphics_queue_family(
         break;
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
@@ -458,7 +458,7 @@ internal bool query_swapchain_support(
     }
 
     out_info->formats =
-        push_array(arena, out_info->format_count, VkSurfaceFormatKHR);
+        push_array(arena, VkSurfaceFormatKHR, out_info->format_count);
     if(vkGetPhysicalDeviceSurfaceFormatsKHR(
            physical_device,
            vk_state.surface,
@@ -479,7 +479,7 @@ internal bool query_swapchain_support(
     }
 
     out_info->present_modes =
-        push_array(arena, out_info->present_mode_count, VkPresentModeKHR);
+        push_array(arena, VkPresentModeKHR, out_info->present_mode_count);
     if(vkGetPhysicalDeviceSurfacePresentModesKHR(
            physical_device,
            vk_state.surface,
@@ -666,13 +666,13 @@ internal bool create_shader_module(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(vk_state.arena);
+    Temp temporary_memory = temp_begin(vk_state.arena);
     u64 shader_size = 0;
     void *shader_data =
         read_binary_file(vk_state.arena, shader_path, &shader_size);
     if(shader_data == nullptr || shader_size == 0) {
         LOG_ERROR("Failed to read shader %s.", shader_path);
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -687,7 +687,7 @@ internal bool create_shader_module(
                       nullptr,
                       out_shader_module
                   ) == VK_SUCCESS;
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return result;
 }
 
@@ -876,14 +876,14 @@ internal bool wait_for_nonzero_framebuffer(void) {
 }
 
 internal bool create_swapchain(void) {
-    TemporaryMemory temporary_memory = begin_temporary_memory(vk_state.arena);
+    Temp temporary_memory = temp_begin(vk_state.arena);
     SwapchainSupportInfo support = {};
     if(!query_swapchain_support(
            vk_state.arena,
            vk_state.physical_device,
            &support
        )) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -901,7 +901,7 @@ internal bool create_swapchain(void) {
             "Swapchain image count %u exceeds MAX_SWAPCHAIN_IMAGES.",
             image_count
         );
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -926,7 +926,7 @@ internal bool create_swapchain(void) {
            nullptr,
            &vk_state.swapchain
        ) != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -936,7 +936,7 @@ internal bool create_swapchain(void) {
            &image_count,
            vk_state.swapchain_images
        ) != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -960,12 +960,12 @@ internal bool create_swapchain(void) {
                nullptr,
                &vk_state.swapchain_views[image_index]
            ) != VK_SUCCESS) {
-            end_temporary_memory(temporary_memory);
+            temp_end(temporary_memory);
             return false;
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return true;
 }
 
@@ -1125,9 +1125,9 @@ internal bool pick_physical_device(Arena *arena) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     VkPhysicalDevice *physical_devices =
-        push_array(arena, physical_device_count, VkPhysicalDevice);
+        push_array(arena, VkPhysicalDevice, physical_device_count);
 
     result = vkEnumeratePhysicalDevices(
         vk_state.instance,
@@ -1135,7 +1135,7 @@ internal bool pick_physical_device(Arena *arena) {
         physical_devices
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -1149,7 +1149,7 @@ internal bool pick_physical_device(Arena *arena) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
@@ -1634,7 +1634,7 @@ bool init_vulkan(Arena *arena, GLFWwindow *window) {
     vk_state.arena = arena;
     vk_state.window = window;
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
+    Temp temporary_memory = temp_begin(arena);
     char const *layers[1] = {};
     u32 layer_count = 0;
     VkInstanceCreateInfo create_info = {};
@@ -1761,6 +1761,6 @@ cleanup:
         cleanup_vulkan();
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return result;
 }

@@ -13,8 +13,8 @@
 #define WINDOW_HEIGHT 800
 
 struct AppState {
-    Arena permanent_arena;
-    Arena transient_arena;
+    Arena *permanent_arena;
+    Arena *transient_arena;
     EditorInput input;
     EditorState editor;
     PushCmdBuffer render_cmds;
@@ -66,14 +66,14 @@ int main(void) {
     bool renderer_initialized = false;
     AppState app_state = {};
 
-    app_state.permanent_arena = create_arena(MB);
-    app_state.transient_arena = create_arena(MB);
+    app_state.permanent_arena = arena_alloc();
+    app_state.transient_arena = arena_alloc();
     app_state.render_cmds =
-        create_push_cmd_buffer(&app_state.permanent_arena, (u32)(128 * KB));
+        create_push_cmd_buffer(app_state.permanent_arena, (u32)(128 * KB));
     init_editor_state(
         &app_state.editor,
-        &app_state.permanent_arena,
-        &app_state.transient_arena
+        app_state.permanent_arena,
+        app_state.transient_arena
     );
 
     if(!glfwInit()) {
@@ -109,7 +109,7 @@ int main(void) {
     glfwSetCharCallback(window, char_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    if(!init_vulkan(&app_state.permanent_arena, window)) {
+    if(!init_vulkan(app_state.permanent_arena, window)) {
         result = -1;
         goto cleanup;
     }
@@ -125,7 +125,7 @@ int main(void) {
         glfwPollEvents();
         editor_input_snapshot_window(&app_state.input, window, dt_for_frame);
 
-        clear_arena(&app_state.transient_arena);
+        arena_clear(app_state.transient_arena);
         editor_update_and_render(
             &app_state.editor,
             &app_state.input,
@@ -153,8 +153,8 @@ cleanup:
     if(glfw_initialized) {
         glfwTerminate();
     }
-    release_arena(&app_state.transient_arena);
-    release_arena(&app_state.permanent_arena);
+    arena_release(app_state.transient_arena);
+    arena_release(app_state.permanent_arena);
 
     return result;
 }
