@@ -19,6 +19,8 @@ struct AppState {
     EditorState editor;
     PushCmdBuffer render_cmds;
     f64 last_frame_time;
+    f64 fps_log_elapsed;
+    u32 fps_log_frame_count;
 };
 
 internal AppState* get_app_state(GLFWwindow* window) {
@@ -61,6 +63,7 @@ internal void scroll_callback(GLFWwindow* window, f64 xoffset, f64 yoffset) {
 
 int main(void) {
     int result = 0;
+    f64 const fps_log_interval_seconds = 2.0;
     GLFWwindow* window = nullptr;
     bool glfw_initialized = false;
     bool renderer_initialized = false;
@@ -140,6 +143,22 @@ int main(void) {
         if(!render_drain_cmd_buffer(&app_state.render_cmds)) {
             result = -1;
             break;
+        }
+
+        app_state.fps_log_elapsed += dt_for_frame;
+        app_state.fps_log_frame_count += 1;
+        if(app_state.fps_log_elapsed >= fps_log_interval_seconds) {
+            f64 average_fps =
+                (f64)app_state.fps_log_frame_count / app_state.fps_log_elapsed;
+            f64 average_ms_per_frame = 1000.0 / average_fps;
+            LOG_INFO(
+                "FPS: %.2f (%.2f ms/frame)",
+                average_fps,
+                average_ms_per_frame
+            );
+
+            app_state.fps_log_elapsed = 0.0;
+            app_state.fps_log_frame_count = 0;
         }
     }
 
