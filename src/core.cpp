@@ -87,12 +87,10 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
             case GLFW_KEY_BACKSPACE: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0) {
-                    // Step back one UTF-8 codepoint
-                    u64 doc_size = text_content_size(state->document);
-                    (void)doc_size;
-                    u64 del_offset = offset - 1;
-                    // Already at a byte boundary since cursor tracks codepoints
-                    text_delete(state->document, del_offset, 1);
+                    u64 del_offset =
+                        text_prev_char_boundary(state->document, offset);
+                    u64 del_size = offset - del_offset;
+                    text_delete(state->document, del_offset, del_size);
                     cursor_from_offset(state, del_offset);
                     state->dirty = true;
                 }
@@ -109,14 +107,20 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
             case GLFW_KEY_LEFT: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0)
-                    cursor_from_offset(state, offset - 1);
+                    cursor_from_offset(
+                        state,
+                        text_prev_char_boundary(state->document, offset)
+                    );
                 moved = true;
             } break;
 
             case GLFW_KEY_RIGHT: {
                 u64 offset = cursor_to_offset(state);
                 if(offset < text_content_size(state->document))
-                    cursor_from_offset(state, offset + 1);
+                    cursor_from_offset(
+                        state,
+                        text_next_char_boundary(state->document, offset)
+                    );
                 moved = true;
             } break;
 
@@ -134,6 +138,8 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
         }
     }
 
+    line_count = text_line_count(state->document);
+    max_rows = line_count > 0 ? (i32)(line_count - 1) : 0;
     state->cursor_row = clamp(state->cursor_row, 0, max_rows);
     state->cursor_column = clamp(state->cursor_column, 0, 4096);
 

@@ -82,7 +82,7 @@ struct TextNode {
 
 struct TextPoint {
     u64 line;
-    u64 col;
+    u64 col; // UTF-8 codepoint column, not a byte offset
 }; // 0-based
 
 struct TextDocument {
@@ -141,11 +141,75 @@ internal void text_free_node(TextDocument* doc, TextNode* node) {
     SLLStackPush(doc->free_nodes, node);
 }
 
+internal bool utf8_is_continuation(u8 byte) {
+    return (byte & 0xC0) == 0x80;
+}
+
 // Find the last valid UTF-8 codepoint start at or before pos in buf.
 internal u16 utf8_boundary_at_or_before(u8 const* buf, u16 pos) {
-    while(pos > 0 && (buf[pos] & 0xC0) == 0x80)
+    while(pos > 0 && utf8_is_continuation(buf[pos]))
         --pos;
     return pos;
+}
+
+internal u16 text_chunk_size_for_bytes(u8 const* bytes, u64 len) {
+    if(len <= TEXT_CHUNK_MAX)
+        return (u16)len;
+
+    u16 chunk_size = utf8_boundary_at_or_before(bytes, TEXT_CHUNK_MAX);
+    if(chunk_size == 0)
+        chunk_size = TEXT_CHUNK_MAX;
+    return chunk_size;
+}
+
+internal u16 text_partition_bytes_into_chunks(
+    u8 const* bytes,
+    u64 len,
+    u16* chunk_sizes,
+    u16 max_chunks
+) {
+    u16 chunk_count = 0;
+    u64 remaining = len;
+
+    while(remaining > 0) {
+        assert(
+            chunk_count < max_chunks,
+            "text chunk partition overflowed fixed storage"
+        );
+        u16 chunk_size = text_chunk_size_for_bytes(bytes, remaining);
+        assert(chunk_size > 0, "text chunk partition made no forward progress");
+        chunk_sizes[chunk_count++] = chunk_size;
+        bytes += chunk_size;
+        remaining -= chunk_size;
+    }
+
+    return chunk_count;
+}
+
+internal void text_write_leaf_chunks(
+    TextLeaf* leaf,
+    u8 const* bytes,
+    u16 const* chunk_sizes,
+    u16 chunk_count
+) {
+    assert(
+        chunk_count <= TEXT_TREE_CAP,
+        "leaf rewrite exceeded maximum chunk capacity"
+    );
+
+    leaf->count = chunk_count;
+    leaf->summary = {};
+
+    u64 offset = 0;
+    for(u16 chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+        TextChunk* chunk = &leaf->chunks[chunk_index];
+        u16 chunk_size = chunk_sizes[chunk_index];
+        chunk->len = chunk_size;
+        memcpy(chunk->text, bytes + offset, chunk_size);
+        chunk->summary = text_summary_from_bytes(bytes + offset, chunk_size);
+        leaf->summary = text_summary_add(leaf->summary, chunk->summary);
+        offset += chunk_size;
+    }
 }
 
 // Recompute leaf summary from its chunks.
@@ -207,68 +271,55 @@ internal TextLeafSplit leaf_insert_small(
     );
     memcpy(buf + local_offset, bytes, len);
 
-    // Redistribute buf into chunks in leaf (and possibly a right leaf)
-    leaf->count = 0;
-    leaf->summary = {};
+    u16 chunk_sizes[TEXT_TREE_CAP * 2 + 2];
+    u16 chunk_count = text_partition_bytes_into_chunks(
+        buf,
+        new_size,
+        chunk_sizes,
+        ARRAY_COUNT(chunk_sizes)
+    );
+    assert(
+        chunk_count <= (TEXT_TREE_CAP * 2),
+        "leaf insert overflowed two-leaf chunk capacity"
+    );
 
     TextLeafSplit split = {};
-    TextLeaf* right_leaf = nullptr;
-    u64 remaining = new_size;
-    u8* p = buf;
-
-    while(remaining > 0) {
-        TextLeaf* target =
-            (right_leaf && leaf->count == TEXT_TREE_CAP) ? right_leaf : leaf;
-
-        if(target->count == TEXT_TREE_CAP) {
-            // Both leaves full — need a third? Shouldn't happen with len ≤
-            // TEXT_CHUNK_MAX. But guard anyway: push remainder into last chunk
-            // (extend it).
-            TextChunk* last = &target->chunks[target->count - 1];
-            u64 space = TEXT_CHUNK_MAX - last->len;
-            u64 copy = remaining < space ? remaining : space;
-            memcpy(last->text + last->len, p, copy);
-            last->len += (u16)copy;
-            last->summary = text_summary_from_bytes(last->text, last->len);
-            p += copy;
-            remaining -= copy;
-            continue;
-        }
-
-        if(!right_leaf && target->count == TEXT_TREE_CAP) {
-            right_leaf = text_alloc_leaf(doc);
-            // Insert into linked list after leaf
-            right_leaf->next = leaf->next;
-            right_leaf->prev = leaf;
-            if(leaf->next)
-                leaf->next->prev = right_leaf;
-            else
-                doc->last_leaf = right_leaf;
-            leaf->next = right_leaf;
-            target = right_leaf;
-        }
-
-        TextChunk* chunk = &target->chunks[target->count++];
-        u64 clen = remaining < TEXT_CHUNK_MAX ? remaining : TEXT_CHUNK_MAX;
-        // Trim to UTF-8 boundary if not the final segment
-        if(remaining > TEXT_CHUNK_MAX) {
-            u16 boundary = utf8_boundary_at_or_before(p, (u16)clen);
-            if(boundary > 0)
-                clen = boundary;
-        }
-        chunk->len = (u16)clen;
-        memcpy(chunk->text, p, clen);
-        chunk->summary = text_summary_from_bytes(p, clen);
-        target->summary = text_summary_add(target->summary, chunk->summary);
-        p += clen;
-        remaining -= clen;
+    if(chunk_count <= TEXT_TREE_CAP) {
+        text_write_leaf_chunks(leaf, buf, chunk_sizes, chunk_count);
+        return split;
     }
 
-    if(right_leaf) {
-        split.did_split = true;
-        split.right = right_leaf;
-        split.right_summary = right_leaf->summary;
-    }
+    TextLeaf* right_leaf = text_alloc_leaf(doc);
+    right_leaf->next = leaf->next;
+    right_leaf->prev = leaf;
+    if(leaf->next)
+        leaf->next->prev = right_leaf;
+    else
+        doc->last_leaf = right_leaf;
+    leaf->next = right_leaf;
+
+    u16 left_count = chunk_count / 2;
+    u16 right_count = chunk_count - left_count;
+    assert(left_count > 0, "split produced empty left leaf");
+    assert(right_count > 0, "split produced empty right leaf");
+    assert(left_count <= TEXT_TREE_CAP, "split left leaf overflowed");
+    assert(right_count <= TEXT_TREE_CAP, "split right leaf overflowed");
+
+    u64 right_offset = 0;
+    for(u16 chunk_index = 0; chunk_index < left_count; ++chunk_index)
+        right_offset += chunk_sizes[chunk_index];
+
+    text_write_leaf_chunks(leaf, buf, chunk_sizes, left_count);
+    text_write_leaf_chunks(
+        right_leaf,
+        buf + right_offset,
+        chunk_sizes + left_count,
+        right_count
+    );
+
+    split.did_split = true;
+    split.right = right_leaf;
+    split.right_summary = right_leaf->summary;
     return split;
 }
 
@@ -408,8 +459,8 @@ internal void text_insert(
     u64 remaining = len;
 
     while(remaining > 0) {
-        u16 chunk =
-            (u16)(remaining < TEXT_CHUNK_MAX ? remaining : TEXT_CHUNK_MAX);
+        u16 chunk = text_chunk_size_for_bytes(p, remaining);
+        assert(chunk > 0, "text insert made no forward progress");
 
         if(!doc->first_leaf) {
             // Empty document: create first leaf
@@ -530,6 +581,47 @@ internal TextLeafPos text_find_leaf(TextDocument* doc, u64 byte_offset) {
     return {node->leaves[i], accumulated};
 }
 
+internal u8 text_byte_at(TextDocument* doc, u64 byte_offset) {
+    assert(byte_offset < doc->total.bytes, "byte offset out of range");
+
+    TextLeafPos lp = text_find_leaf(doc, byte_offset);
+    u64 local_offset = byte_offset - lp.leaf_start;
+    u64 accumulated = 0;
+
+    for(int chunk_index = 0; chunk_index < lp.leaf->count; ++chunk_index) {
+        TextChunk* chunk = &lp.leaf->chunks[chunk_index];
+        if(local_offset < accumulated + chunk->len) {
+            return chunk->text[local_offset - accumulated];
+        }
+        accumulated += chunk->len;
+    }
+
+    assert(false, "failed to resolve byte within leaf");
+    return 0;
+}
+
+internal u64 text_prev_char_boundary(TextDocument* doc, u64 byte_offset) {
+    if(byte_offset == 0)
+        return 0;
+
+    u64 result = byte_offset - 1;
+    while(result > 0 && utf8_is_continuation(text_byte_at(doc, result)))
+        --result;
+    return result;
+}
+
+internal u64 text_next_char_boundary(TextDocument* doc, u64 byte_offset) {
+    if(byte_offset >= doc->total.bytes)
+        return doc->total.bytes;
+
+    u64 result = byte_offset + 1;
+    while(result < doc->total.bytes &&
+          utf8_is_continuation(text_byte_at(doc, result))) {
+        ++result;
+    }
+    return result;
+}
+
 // ---- delete within one leaf ----
 // Deletes [local_start, local_start+len) from the leaf.
 // Returns true if leaf became empty.
@@ -561,14 +653,9 @@ internal bool leaf_delete_range(
     u64 rem = new_size;
     u8* p = buf;
     while(rem > 0) {
-        u64 clen = rem < TEXT_CHUNK_MAX ? rem : TEXT_CHUNK_MAX;
-        if(rem > TEXT_CHUNK_MAX) {
-            u16 boundary = utf8_boundary_at_or_before(p, (u16)clen);
-            if(boundary > 0)
-                clen = boundary;
-        }
+        u16 clen = text_chunk_size_for_bytes(p, rem);
         TextChunk* chunk = &leaf->chunks[leaf->count++];
-        chunk->len = (u16)clen;
+        chunk->len = clen;
         memcpy(chunk->text, p, clen);
         chunk->summary = text_summary_from_bytes(p, clen);
         leaf->summary = text_summary_add(leaf->summary, chunk->summary);
@@ -703,11 +790,13 @@ internal TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
             // Within this chunk
             for(u16 j = 0; j < c->len && accumulated < byte_offset;
                 ++j, ++accumulated) {
-                if(c->text[j] == '\n') {
-                    ++pt.line;
-                    pt.col = 0;
-                } else {
-                    ++pt.col;
+                if(!utf8_is_continuation(c->text[j])) {
+                    if(c->text[j] == '\n') {
+                        ++pt.line;
+                        pt.col = 0;
+                    } else {
+                        ++pt.col;
+                    }
                 }
             }
             return pt;
@@ -719,6 +808,7 @@ internal TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
 // Convert (line, col) → logical byte offset
 internal u64 text_point_to_offset(TextDocument* doc, u64 line, u64 col) {
     u64 cur_line = 0;
+    u64 cur_col = 0;
     u64 offset = 0;
 
     for(TextLeaf* leaf = doc->first_leaf; leaf; leaf = leaf->next) {
@@ -735,15 +825,23 @@ internal u64 text_point_to_offset(TextDocument* doc, u64 line, u64 col) {
                 continue;
             }
             for(u16 j = 0; j < c->len; ++j) {
-                if(cur_line == line && col == 0)
-                    return offset;
+                if(utf8_is_continuation(c->text[j])) {
+                    ++offset;
+                    continue;
+                }
+
+                if(cur_line == line) {
+                    if(cur_col == col)
+                        return offset;
+                    if(c->text[j] == '\n')
+                        return offset;
+                }
+
                 if(c->text[j] == '\n') {
                     ++cur_line;
-                    col = col > 0 ? col - 1 : 0;
-                } else if(cur_line == line) {
-                    if(col == 0)
-                        return offset;
-                    --col;
+                    cur_col = 0;
+                } else {
+                    ++cur_col;
                 }
                 ++offset;
             }
@@ -752,15 +850,26 @@ internal u64 text_point_to_offset(TextDocument* doc, u64 line, u64 col) {
     return offset;
 }
 
+internal u64 text_line_start_offset(TextDocument* doc, u64 line_idx) {
+    return text_point_to_offset(doc, line_idx, 0);
+}
+
+internal u64 text_line_end_offset(TextDocument* doc, u64 line_idx) {
+    u64 offset = text_line_start_offset(doc, line_idx);
+    while(offset < doc->total.bytes) {
+        u8 byte = text_byte_at(doc, offset);
+        offset = text_next_char_boundary(doc, offset);
+        if(byte == '\n')
+            break;
+    }
+    return offset;
+}
+
 // Copy one line's content into scratch arena. Returns a String slice.
 internal String
 text_line_content(TextDocument* doc, u64 line_idx, Arena* scratch) {
-    u64 start_offset = text_point_to_offset(doc, line_idx, 0);
-    u64 end_offset = text_point_to_offset(doc, line_idx + 1, 0);
-    // Remove trailing newline if present
-    if(end_offset > start_offset)
-        --end_offset;
-
+    u64 start_offset = text_line_start_offset(doc, line_idx);
+    u64 end_offset = text_line_end_offset(doc, line_idx);
     u64 size = end_offset - start_offset;
     if(size == 0)
         return {(u8 const*)"", 0};
@@ -795,6 +904,10 @@ text_line_content(TextDocument* doc, u64 line_idx, Arena* scratch) {
             accumulated += c->len;
         }
     }
+
+    if(written > 0 && buf[written - 1] == '\n')
+        --written;
+
     buf[written] = 0;
     return {buf, written};
 }
