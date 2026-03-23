@@ -6,6 +6,8 @@
 #include <GLFW/glfw3.h>
 
 #include "renderer/vulkan.cpp"
+#include "input.h"
+#include "core.cpp"
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 800
@@ -13,14 +15,48 @@
 struct AppState {
     Arena permanent_arena;
     Arena transient_arena;
+    EditorInput input;
+    EditorState editor;
     PushCmdBuffer render_cmds;
+    f64 last_frame_time;
 };
 
-internal void build_frame(AppState *app_state) {
-    assert(app_state != nullptr, "App state must not be null!");
+internal AppState *get_app_state(GLFWwindow *window) {
+    assert(window != nullptr, "Window must not be null!");
 
-    push_cmd_buffer_reset(&app_state->render_cmds);
-    push_clear(&app_state->render_cmds, vec4(0.04f, 0.05f, 0.08f, 1.0f));
+    AppState *app_state = (AppState *)glfwGetWindowUserPointer(window);
+    assert(app_state != nullptr, "Window app state must not be null!");
+    return app_state;
+}
+
+internal void key_callback(
+    GLFWwindow *window,
+    i32 key,
+    i32 scancode,
+    i32 action,
+    i32 mods
+) {
+    (void)scancode;
+
+    AppState *app_state = get_app_state(window);
+    if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+        return;
+    }
+
+    editor_input_push_key_event(&app_state->input, key, mods, action);
+}
+
+internal void char_callback(GLFWwindow *window, u32 codepoint) {
+    AppState *app_state = get_app_state(window);
+    editor_input_push_char(&app_state->input, codepoint);
+}
+
+internal void scroll_callback(GLFWwindow *window, f64 xoffset, f64 yoffset) {
+    (void)xoffset;
+
+    AppState *app_state = get_app_state(window);
+    editor_input_push_scroll(&app_state->input, yoffset);
 }
 
 int main(void) {
@@ -34,6 +70,11 @@ int main(void) {
     app_state.transient_arena = create_arena(MB);
     app_state.render_cmds =
         create_push_cmd_buffer(&app_state.permanent_arena, (u32)(128 * KB));
+    init_editor_state(
+        &app_state.editor,
+        &app_state.permanent_arena,
+        &app_state.transient_arena
+    );
 
     if(!glfwInit()) {
         LOG_FATAL("glfwInit failed.");
@@ -63,22 +104,33 @@ int main(void) {
         goto cleanup;
     }
 
+    glfwSetWindowUserPointer(window, &app_state);
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetCharCallback(window, char_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+
     if(!init_vulkan(&app_state.permanent_arena, window)) {
         result = -1;
         goto cleanup;
     }
     renderer_initialized = true;
+    app_state.last_frame_time = glfwGetTime();
 
     while(!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
+        f64 current_time = glfwGetTime();
+        f32 dt_for_frame = (f32)(current_time - app_state.last_frame_time);
+        app_state.last_frame_time = current_time;
 
-        if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-            continue;
-        }
+        editor_input_begin_frame(&app_state.input);
+        glfwPollEvents();
+        editor_input_snapshot_window(&app_state.input, window, dt_for_frame);
 
         clear_arena(&app_state.transient_arena);
-        build_frame(&app_state);
+        editor_update_and_render(
+            &app_state.editor,
+            &app_state.input,
+            &app_state.render_cmds
+        );
 
         if(!begin_frame()) {
             result = -1;

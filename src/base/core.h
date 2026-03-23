@@ -54,6 +54,8 @@
 #define MB (KB * KB)
 #define GB (MB * KB)
 #define TB (GB * KB)
+#define clamp(value, min, max)                                                \
+    (((value) < (min)) ? (min) : (((value) > (max)) ? (max) : (value)))
 
 #if COMPILER_MSVC
 #define assume(expr) __assume(expr)
@@ -153,17 +155,3 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
 #else
 #define assert(expr, msg) ((void)sizeof((expr) ? true : false))
 #endif
-
-inline u32 clamp(u32 value, u32 min, u32 max) {
-    assert(min <= max, "Clamp range is invalid!");
-
-    u32 result = value;
-    if(result < min) {
-        result = min;
-    }
-    if(result > max) {
-        result = max;
-    }
-
-    return result;
-}
