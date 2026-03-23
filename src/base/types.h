@@ -63,7 +63,7 @@ inline vec2 operator*(vec2 a, f32 scale) {
     return scale * a;
 }
 
-inline vec2 &operator+=(vec2 &a, vec2 b) {
+inline vec2& operator+=(vec2& a, vec2 b) {
     a = a + b;
     return a;
 }

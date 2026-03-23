@@ -13,24 +13,24 @@
 #define WINDOW_HEIGHT 800
 
 struct AppState {
-    Arena *permanent_arena;
-    Arena *transient_arena;
+    Arena* permanent_arena;
+    Arena* transient_arena;
     EditorInput input;
     EditorState editor;
     PushCmdBuffer render_cmds;
     f64 last_frame_time;
 };
 
-internal AppState *get_app_state(GLFWwindow *window) {
+internal AppState* get_app_state(GLFWwindow* window) {
     assert(window != nullptr, "Window must not be null!");
 
-    AppState *app_state = (AppState *)glfwGetWindowUserPointer(window);
+    AppState* app_state = (AppState*)glfwGetWindowUserPointer(window);
     assert(app_state != nullptr, "Window app state must not be null!");
     return app_state;
 }
 
 internal void key_callback(
-    GLFWwindow *window,
+    GLFWwindow* window,
     i32 key,
     i32 scancode,
     i32 action,
@@ -38,7 +38,7 @@ internal void key_callback(
 ) {
     (void)scancode;
 
-    AppState *app_state = get_app_state(window);
+    AppState* app_state = get_app_state(window);
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
         return;
@@ -47,21 +47,21 @@ internal void key_callback(
     editor_input_push_key_event(&app_state->input, key, mods, action);
 }
 
-internal void char_callback(GLFWwindow *window, u32 codepoint) {
-    AppState *app_state = get_app_state(window);
+internal void char_callback(GLFWwindow* window, u32 codepoint) {
+    AppState* app_state = get_app_state(window);
     editor_input_push_char(&app_state->input, codepoint);
 }
 
-internal void scroll_callback(GLFWwindow *window, f64 xoffset, f64 yoffset) {
+internal void scroll_callback(GLFWwindow* window, f64 xoffset, f64 yoffset) {
     (void)xoffset;
 
-    AppState *app_state = get_app_state(window);
+    AppState* app_state = get_app_state(window);
     editor_input_push_scroll(&app_state->input, yoffset);
 }
 
 int main(void) {
     int result = 0;
-    GLFWwindow *window = nullptr;
+    GLFWwindow* window = nullptr;
     bool glfw_initialized = false;
     bool renderer_initialized = false;
     AppState app_state = {};
@@ -94,7 +94,7 @@ int main(void) {
         nullptr
     );
     if(window == nullptr) {
-        char const *description = nullptr;
+        char const* description = nullptr;
         glfwGetError(&description);
         LOG_FATAL(
             "glfwCreateWindow failed: %s",

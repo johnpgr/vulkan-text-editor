@@ -14,7 +14,7 @@ enum LogLevel : u8 {
     LOG_LEVEL_TRACE = 5,
 };
 
-global_variable char const *log_level_colors[] = {
+global_variable char const* log_level_colors[] = {
     "\033[1;41m",
     "\033[1;31m",
     "\033[1;33m",
@@ -23,7 +23,7 @@ global_variable char const *log_level_colors[] = {
     "\033[0;90m",
 };
 
-global_variable char const *log_level_tags[] = {
+global_variable char const* log_level_tags[] = {
     "[FATAL]",
     "[ERROR]",
     "[WARN]",
@@ -32,15 +32,15 @@ global_variable char const *log_level_tags[] = {
     "[TRACE]",
 };
 
-global_variable char const *log_color_reset = "\033[0m";
+global_variable char const* log_color_reset = "\033[0m";
 
-inline void log_write_v(LogLevel level, char const *fmt, va_list args)
+inline void log_write_v(LogLevel level, char const* fmt, va_list args)
     __attribute__((format(printf, 2, 0)));
 
-inline void log_write(LogLevel level, char const *fmt, ...)
+inline void log_write(LogLevel level, char const* fmt, ...)
     __attribute__((format(printf, 2, 3)));
 
-inline void log_write_v(LogLevel level, char const *fmt, va_list args) {
+inline void log_write_v(LogLevel level, char const* fmt, va_list args) {
     char msg[16384];
     va_list args_copy;
     va_copy(args_copy, args);
@@ -59,11 +59,11 @@ inline void log_write_v(LogLevel level, char const *fmt, va_list args) {
         log_color_reset
     );
 
-    FILE *stream = level_index <= (usize)LOG_LEVEL_ERROR ? stderr : stdout;
+    FILE* stream = level_index <= (usize)LOG_LEVEL_ERROR ? stderr : stdout;
     (void)fputs(out, stream);
 }
 
-inline void log_write(LogLevel level, char const *fmt, ...) {
+inline void log_write(LogLevel level, char const* fmt, ...) {
     va_list args;
     va_start(args, fmt);
     log_write_v(level, fmt, args);

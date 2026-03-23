@@ -2,29 +2,29 @@
 
 #if OS_WINDOWS
 
-internal bool init_thread_mutex(ThreadMutex *mutex) {
+internal bool init_thread_mutex(ThreadMutex* mutex) {
     assert(mutex != nullptr, "Thread mutex must not be null!");
     InitializeCriticalSection(&mutex->handle);
     return true;
 }
 
-internal void destroy_thread_mutex(ThreadMutex *mutex) {
+internal void destroy_thread_mutex(ThreadMutex* mutex) {
     assert(mutex != nullptr, "Thread mutex must not be null!");
     DeleteCriticalSection(&mutex->handle);
 }
 
-internal void lock_thread_mutex(ThreadMutex *mutex) {
+internal void lock_thread_mutex(ThreadMutex* mutex) {
     assert(mutex != nullptr, "Thread mutex must not be null!");
     EnterCriticalSection(&mutex->handle);
 }
 
-internal void unlock_thread_mutex(ThreadMutex *mutex) {
+internal void unlock_thread_mutex(ThreadMutex* mutex) {
     assert(mutex != nullptr, "Thread mutex must not be null!");
     LeaveCriticalSection(&mutex->handle);
 }
 
 internal bool init_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 ) {
     assert(
         condition_variable != nullptr,
@@ -35,7 +35,7 @@ internal bool init_thread_condition_variable(
 }
 
 internal void destroy_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 ) {
     assert(
         condition_variable != nullptr,
@@ -44,7 +44,7 @@ internal void destroy_thread_condition_variable(
 }
 
 internal void wake_all_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 ) {
     assert(
         condition_variable != nullptr,
@@ -54,8 +54,8 @@ internal void wake_all_thread_condition_variable(
 }
 
 internal void wait_thread_condition_variable(
-    ThreadConditionVariable *condition_variable,
-    ThreadMutex *mutex
+    ThreadConditionVariable* condition_variable,
+    ThreadMutex* mutex
 ) {
     assert(
         condition_variable != nullptr,
@@ -69,7 +69,7 @@ internal void wait_thread_condition_variable(
     );
 }
 
-internal bool create_thread(Thread *thread, ThreadProc *proc, void *data) {
+internal bool create_thread(Thread* thread, ThreadProc* proc, void* data) {
     assert(thread != nullptr, "Thread must not be null!");
     assert(proc != nullptr, "Thread proc must not be null!");
 
@@ -77,7 +77,7 @@ internal bool create_thread(Thread *thread, ThreadProc *proc, void *data) {
     return thread->handle != nullptr;
 }
 
-internal void join_thread(Thread *thread) {
+internal void join_thread(Thread* thread) {
     assert(thread != nullptr, "Thread must not be null!");
     WaitForSingleObject(thread->handle, INFINITE);
     CloseHandle(thread->handle);

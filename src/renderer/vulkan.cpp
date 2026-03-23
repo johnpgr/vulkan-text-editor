@@ -18,22 +18,22 @@
 global_variable VulkanState vk_state = {};
 
 #ifndef NDEBUG
-global_variable char const *validation_layer_name =
+global_variable char const* validation_layer_name =
     "VK_LAYER_KHRONOS_validation";
 #endif
-global_variable char const *portability_subset_extension_name =
+global_variable char const* portability_subset_extension_name =
     "VK_KHR_portability_subset";
 
 struct SwapchainSupportInfo {
     VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR *formats;
+    VkSurfaceFormatKHR* formats;
     u32 format_count;
-    VkPresentModeKHR *present_modes;
+    VkPresentModeKHR* present_modes;
     u32 present_mode_count;
 };
 
-internal char const *get_glfw_error_string(void) {
-    char const *description = nullptr;
+internal char const* get_glfw_error_string(void) {
+    char const* description = nullptr;
     glfwGetError(&description);
     return description != nullptr ? description : "Unknown GLFW error";
 }
@@ -52,7 +52,7 @@ internal u32 get_target_api_version(void) {
     return VK_API_VERSION_1_0;
 }
 
-internal bool has_instance_extension(Arena *arena, char const *extension_name) {
+internal bool has_instance_extension(Arena* arena, char const* extension_name) {
     assume(arena != nullptr);
     assume(extension_name != nullptr);
 
@@ -67,7 +67,7 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
     }
 
     Temp temporary_memory = temp_begin(arena);
-    VkExtensionProperties *extensions =
+    VkExtensionProperties* extensions =
         push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateInstanceExtensionProperties(
@@ -92,15 +92,15 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
     return found;
 }
 
-internal char const **get_instance_extensions(
-    Arena *arena,
-    u32 *out_extension_count
+internal char const** get_instance_extensions(
+    Arena* arena,
+    u32* out_extension_count
 ) {
     assume(arena != nullptr);
     assume(out_extension_count != nullptr);
 
     u32 glfw_extension_count = 0;
-    char const **glfw_extensions =
+    char const** glfw_extensions =
         glfwGetRequiredInstanceExtensions(&glfw_extension_count);
     if(glfw_extensions == nullptr || glfw_extension_count == 0) {
         *out_extension_count = 0;
@@ -122,7 +122,7 @@ internal char const **get_instance_extensions(
 #endif
 
     u32 extension_count = glfw_extension_count + extra_extension_count;
-    char const **extensions = push_array(arena, char const *, extension_count);
+    char const** extensions = push_array(arena, char const*, extension_count);
 
     u32 extension_index = 0;
     for(u32 glfw_index = 0; glfw_index < glfw_extension_count; ++glfw_index) {
@@ -147,7 +147,7 @@ internal char const **get_instance_extensions(
     return extensions;
 }
 
-internal bool has_layer(Arena *arena, char const *layer_name) {
+internal bool has_layer(Arena* arena, char const* layer_name) {
     assume(arena != nullptr);
     assume(layer_name != nullptr);
 
@@ -158,7 +158,7 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
     }
 
     Temp temporary_memory = temp_begin(arena);
-    VkLayerProperties *layers =
+    VkLayerProperties* layers =
         push_array(arena, VkLayerProperties, layer_count);
 
     result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
@@ -183,13 +183,13 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
 internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_types,
-    VkDebugUtilsMessengerCallbackDataEXT const *callback_data,
-    void *user_data
+    VkDebugUtilsMessengerCallbackDataEXT const* callback_data,
+    void* user_data
 ) {
     (void)message_types;
     (void)user_data;
 
-    char const *message =
+    char const* message =
         (callback_data != nullptr && callback_data->pMessage != nullptr)
             ? callback_data->pMessage
             : "Unknown Vulkan validation message";
@@ -210,7 +210,7 @@ internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
 }
 
 internal void build_debug_messenger_create_info(
-    VkDebugUtilsMessengerCreateInfoEXT *out_create_info
+    VkDebugUtilsMessengerCreateInfoEXT* out_create_info
 ) {
     assume(out_create_info != nullptr);
 
@@ -249,9 +249,9 @@ internal bool create_debug_messenger(void) {
 #endif
 
 internal bool has_device_extension(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    char const *extension_name
+    char const* extension_name
 ) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
@@ -269,7 +269,7 @@ internal bool has_device_extension(
     }
 
     Temp temporary_memory = temp_begin(arena);
-    VkExtensionProperties *extensions =
+    VkExtensionProperties* extensions =
         push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateDeviceExtensionProperties(
@@ -296,7 +296,7 @@ internal bool has_device_extension(
 }
 
 internal bool supports_dynamic_rendering(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device
 ) {
     assume(arena != nullptr);
@@ -337,9 +337,9 @@ internal bool supports_dynamic_rendering(
 }
 
 internal bool find_graphics_queue_family(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    u32 *out_queue_family_index
+    u32* out_queue_family_index
 ) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
@@ -356,7 +356,7 @@ internal bool find_graphics_queue_family(
     }
 
     Temp temporary_memory = temp_begin(arena);
-    VkQueueFamilyProperties *queue_families =
+    VkQueueFamilyProperties* queue_families =
         push_array(arena, VkQueueFamilyProperties, queue_family_count);
 
     vkGetPhysicalDeviceQueueFamilyProperties(
@@ -392,7 +392,7 @@ internal bool find_graphics_queue_family(
     return found;
 }
 
-internal u32 score_device(Arena *arena, VkPhysicalDevice physical_device) {
+internal u32 score_device(Arena* arena, VkPhysicalDevice physical_device) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
 
@@ -429,9 +429,9 @@ internal u32 score_device(Arena *arena, VkPhysicalDevice physical_device) {
 }
 
 internal bool query_swapchain_support(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    SwapchainSupportInfo *out_info
+    SwapchainSupportInfo* out_info
 ) {
     assume(arena != nullptr);
     assume(physical_device != VK_NULL_HANDLE);
@@ -493,7 +493,7 @@ internal bool query_swapchain_support(
 }
 
 internal VkSurfaceFormatKHR
-choose_surface_format(SwapchainSupportInfo *support) {
+choose_surface_format(SwapchainSupportInfo* support) {
     assume(support != nullptr);
 
     for(u32 index = 0; index < support->format_count; ++index) {
@@ -507,7 +507,7 @@ choose_surface_format(SwapchainSupportInfo *support) {
     return support->formats[0];
 }
 
-internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo *support) {
+internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo* support) {
     assume(support != nullptr);
 
     for(u32 index = 0; index < support->present_mode_count; ++index) {
@@ -519,7 +519,7 @@ internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo *support) {
     return support->present_modes[0];
 }
 
-internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo *support) {
+internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo* support) {
     assume(support != nullptr);
 
     if(support->capabilities.currentExtent.width != UINT32_MAX) {
@@ -555,7 +555,7 @@ internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo *support) {
 }
 
 internal bool get_executable_directory_for_renderer(
-    char *buffer,
+    char* buffer,
     u64 buffer_size
 ) {
     assert(buffer != nullptr, "Executable path buffer must not be null!");
@@ -577,7 +577,7 @@ internal bool get_executable_directory_for_renderer(
     return false;
 #endif
 
-    char *last_slash = strrchr(buffer, '/');
+    char* last_slash = strrchr(buffer, '/');
     if(last_slash == nullptr) {
         return false;
     }
@@ -587,9 +587,9 @@ internal bool get_executable_directory_for_renderer(
 }
 
 internal bool build_shader_path(
-    char *buffer,
+    char* buffer,
     u64 buffer_size,
-    char const *file_name
+    char const* file_name
 ) {
     assert(buffer != nullptr, "Shader path buffer must not be null!");
     assert(file_name != nullptr, "Shader file name must not be null!");
@@ -612,12 +612,12 @@ internal bool build_shader_path(
     return written > 0 && (u64)written < buffer_size;
 }
 
-internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
+internal void* read_binary_file(Arena* arena, char const* path, u64* out_size) {
     assert(arena != nullptr, "Arena must not be null!");
     assert(path != nullptr, "File path must not be null!");
     assert(out_size != nullptr, "Size output must not be null!");
 
-    FILE *file = fopen(path, "rb");
+    FILE* file = fopen(path, "rb");
     if(file == nullptr) {
         return nullptr;
     }
@@ -638,7 +638,7 @@ internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
         return nullptr;
     }
 
-    void *data = push_size(arena, (u64)file_size);
+    void* data = push_size(arena, (u64)file_size);
     usize read_size = fread(data, 1, (usize)file_size, file);
     fclose(file);
 
@@ -651,8 +651,8 @@ internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
 }
 
 internal bool create_shader_module(
-    char const *file_name,
-    VkShaderModule *out_shader_module
+    char const* file_name,
+    VkShaderModule* out_shader_module
 ) {
     assert(file_name != nullptr, "Shader file name must not be null!");
     assert(
@@ -668,7 +668,7 @@ internal bool create_shader_module(
 
     Temp temporary_memory = temp_begin(vk_state.arena);
     u64 shader_size = 0;
-    void *shader_data =
+    void* shader_data =
         read_binary_file(vk_state.arena, shader_path, &shader_size);
     if(shader_data == nullptr || shader_size == 0) {
         LOG_ERROR("Failed to read shader %s.", shader_path);
@@ -679,7 +679,7 @@ internal bool create_shader_module(
     VkShaderModuleCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     create_info.codeSize = shader_size;
-    create_info.pCode = (u32 const *)shader_data;
+    create_info.pCode = (u32 const*)shader_data;
 
     bool result = vkCreateShaderModule(
                       vk_state.device,
@@ -1056,15 +1056,15 @@ internal void cleanup_command_buffers(void) {
     }
 }
 
-internal vec4 get_clear_color(PushCmdBuffer *buffer) {
+internal vec4 get_clear_color(PushCmdBuffer* buffer) {
     assert(buffer != nullptr, "Push command buffer must not be null!");
 
     vec4 result = vec4(0.04f, 0.05f, 0.08f, 1.0f);
 
     for(u32 offset = 0; offset < buffer->used;) {
-        PushCmd *cmd = (PushCmd *)(buffer->base + offset);
+        PushCmd* cmd = (PushCmd*)(buffer->base + offset);
         if(cmd->type == cmd_type_clear) {
-            CmdClear *clear_cmd = (CmdClear *)cmd;
+            CmdClear* clear_cmd = (CmdClear*)cmd;
             result = clear_cmd->color;
             break;
         }
@@ -1112,7 +1112,7 @@ internal void transition_swapchain_image(
     );
 }
 
-internal bool pick_physical_device(Arena *arena) {
+internal bool pick_physical_device(Arena* arena) {
     assume(arena != nullptr);
 
     u32 physical_device_count = 0;
@@ -1126,7 +1126,7 @@ internal bool pick_physical_device(Arena *arena) {
     }
 
     Temp temporary_memory = temp_begin(arena);
-    VkPhysicalDevice *physical_devices =
+    VkPhysicalDevice* physical_devices =
         push_array(arena, VkPhysicalDevice, physical_device_count);
 
     result = vkEnumeratePhysicalDevices(
@@ -1153,7 +1153,7 @@ internal bool pick_physical_device(Arena *arena) {
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
-internal bool create_device(Arena *arena) {
+internal bool create_device(Arena* arena) {
     assume(arena != nullptr);
     assume(vk_state.physical_device != VK_NULL_HANDLE);
 
@@ -1190,7 +1190,7 @@ internal bool create_device(Arena *arena) {
         portability_subset_extension_name
     );
 
-    char const *device_extensions[3] = {};
+    char const* device_extensions[3] = {};
     u32 device_extension_count = 0;
     device_extensions[device_extension_count++] =
         VK_KHR_SWAPCHAIN_EXTENSION_NAME;
@@ -1410,7 +1410,7 @@ bool begin_frame(void) {
     return true;
 }
 
-bool render_drain_cmd_buffer(PushCmdBuffer *buffer) {
+bool render_drain_cmd_buffer(PushCmdBuffer* buffer) {
     assert(buffer != nullptr, "Push command buffer must not be null!");
 
     if(!vk_state.frame_active || vk_state.fatal_error) {
@@ -1492,9 +1492,9 @@ bool render_drain_cmd_buffer(PushCmdBuffer *buffer) {
     );
 
     for(u32 offset = 0; offset < buffer->used;) {
-        PushCmd *cmd = (PushCmd *)(buffer->base + offset);
+        PushCmd* cmd = (PushCmd*)(buffer->base + offset);
         if(cmd->type == cmd_type_rect) {
-            CmdRect *rect_cmd = (CmdRect *)cmd;
+            CmdRect* rect_cmd = (CmdRect*)cmd;
             VulkanSpritePushConstants push_constants = {};
             push_constants.center = rect_cmd->center;
             push_constants.size = rect_cmd->size;
@@ -1622,7 +1622,7 @@ void cleanup_vulkan(void) {
     vk_state = {};
 }
 
-bool init_vulkan(Arena *arena, GLFWwindow *window) {
+bool init_vulkan(Arena* arena, GLFWwindow* window) {
     assert(arena != nullptr, "Vulkan arena must not be null!");
     assert(window != nullptr, "Vulkan window must not be null!");
 
@@ -1635,7 +1635,7 @@ bool init_vulkan(Arena *arena, GLFWwindow *window) {
     vk_state.window = window;
 
     Temp temporary_memory = temp_begin(arena);
-    char const *layers[1] = {};
+    char const* layers[1] = {};
     u32 layer_count = 0;
     VkInstanceCreateInfo create_info = {};
 
@@ -1654,7 +1654,7 @@ bool init_vulkan(Arena *arena, GLFWwindow *window) {
     vk_state.app_info = info;
 
     u32 extension_count = 0;
-    char const **extensions = get_instance_extensions(arena, &extension_count);
+    char const** extensions = get_instance_extensions(arena, &extension_count);
     if(extension_count == 0 || extensions == nullptr) {
         LOG_FATAL(
             "glfwGetRequiredInstanceExtensions failed: %s",

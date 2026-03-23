@@ -18,8 +18,8 @@ struct VulkanSpritePushConstants {
 };
 
 struct VulkanState {
-    Arena *arena;
-    GLFWwindow *window;
+    Arena* arena;
+    GLFWwindow* window;
 
     VkInstance instance;
     VkApplicationInfo app_info;
@@ -57,7 +57,7 @@ struct VulkanState {
     PFN_vkCmdEndRenderingKHR cmd_end_rendering;
 };
 
-bool init_vulkan(Arena *arena, GLFWwindow *window);
+bool init_vulkan(Arena* arena, GLFWwindow* window);
 void cleanup_vulkan(void);
 bool begin_frame(void);
-bool render_drain_cmd_buffer(PushCmdBuffer *buffer);
+bool render_drain_cmd_buffer(PushCmdBuffer* buffer);

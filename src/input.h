@@ -25,7 +25,7 @@ struct EditorInput {
     f32 dt_for_frame;
 };
 
-internal void editor_input_begin_frame(EditorInput *input) {
+internal void editor_input_begin_frame(EditorInput* input) {
     assert(input != nullptr, "Editor input must not be null!");
 
     input->key_event_count = 0;
@@ -34,8 +34,8 @@ internal void editor_input_begin_frame(EditorInput *input) {
 }
 
 internal void editor_input_snapshot_window(
-    EditorInput *input,
-    GLFWwindow *window,
+    EditorInput* input,
+    GLFWwindow* window,
     f32 dt_for_frame
 ) {
     assert(input != nullptr, "Editor input must not be null!");
@@ -52,7 +52,7 @@ internal void editor_input_snapshot_window(
 }
 
 internal void editor_input_push_key_event(
-    EditorInput *input,
+    EditorInput* input,
     i32 key,
     i32 mods,
     i32 action
@@ -67,14 +67,14 @@ internal void editor_input_push_key_event(
         return;
     }
 
-    KeyEvent *event = input->key_events + input->key_event_count++;
+    KeyEvent* event = input->key_events + input->key_event_count++;
     event->key = key;
     event->mods = mods;
     event->pressed = action == GLFW_PRESS;
     event->repeated = action == GLFW_REPEAT;
 }
 
-internal void editor_input_push_char(EditorInput *input, u32 codepoint) {
+internal void editor_input_push_char(EditorInput* input, u32 codepoint) {
     assert(input != nullptr, "Editor input must not be null!");
 
     if(input->char_input_count >= MAX_CHAR_INPUT_COUNT) {
@@ -84,7 +84,7 @@ internal void editor_input_push_char(EditorInput *input, u32 codepoint) {
     input->char_inputs[input->char_input_count++] = codepoint;
 }
 
-internal void editor_input_push_scroll(EditorInput *input, f64 yoffset) {
+internal void editor_input_push_scroll(EditorInput* input, f64 yoffset) {
     assert(input != nullptr, "Editor input must not be null!");
 
     input->scroll_delta += (f32)yoffset;
