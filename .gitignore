@@ -1,4 +1,4 @@
 bin/
-zed/
-raddebugger/
 compile_commands.json
+.cache/
+.knowledge/

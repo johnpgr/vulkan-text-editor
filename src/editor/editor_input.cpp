@@ -1,31 +1,11 @@
-#pragma once
+#include "editor/editor_input.h"
 
-#include "base/core.h"
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
+#include <GLFW/glfw3.h>
 
-#define MAX_KEY_EVENTS 128
-#define MAX_CHAR_INPUT_COUNT 64
-
-struct KeyEvent {
-    i32 key;
-    i32 mods;
-    bool pressed;
-    bool repeated;
-};
-
-struct EditorInput {
-    KeyEvent key_events[MAX_KEY_EVENTS];
-    u32 key_event_count;
-    u32 char_inputs[MAX_CHAR_INPUT_COUNT];
-    u32 char_input_count;
-    f32 scroll_delta;
-    f64 mouse_x;
-    f64 mouse_y;
-    u32 window_width;
-    u32 window_height;
-    f32 dt_for_frame;
-};
-
-internal void editor_input_begin_frame(EditorInput* input) {
+void editor_input_begin_frame(EditorInput* input) {
     assert(input != nullptr, "Editor input must not be null!");
 
     input->key_event_count = 0;
@@ -33,7 +13,7 @@ internal void editor_input_begin_frame(EditorInput* input) {
     input->scroll_delta = 0.0f;
 }
 
-internal void editor_input_snapshot_window(
+void editor_input_snapshot_window(
     EditorInput* input,
     GLFWwindow* window,
     f32 dt_for_frame
@@ -51,7 +31,7 @@ internal void editor_input_snapshot_window(
     input->dt_for_frame = dt_for_frame;
 }
 
-internal void editor_input_push_key_event(
+void editor_input_push_key_event(
     EditorInput* input,
     i32 key,
     i32 mods,
@@ -74,7 +54,7 @@ internal void editor_input_push_key_event(
     event->repeated = action == GLFW_REPEAT;
 }
 
-internal void editor_input_push_char(EditorInput* input, u32 codepoint) {
+void editor_input_push_char(EditorInput* input, u32 codepoint) {
     assert(input != nullptr, "Editor input must not be null!");
 
     if(input->char_input_count >= MAX_CHAR_INPUT_COUNT) {
@@ -84,7 +64,7 @@ internal void editor_input_push_char(EditorInput* input, u32 codepoint) {
     input->char_inputs[input->char_input_count++] = codepoint;
 }
 
-internal void editor_input_push_scroll(EditorInput* input, f64 yoffset) {
+void editor_input_push_scroll(EditorInput* input, f64 yoffset) {
     assert(input != nullptr, "Editor input must not be null!");
 
     input->scroll_delta += (f32)yoffset;

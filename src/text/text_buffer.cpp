@@ -1,8 +1,6 @@
-#pragma once
+#include "text/text_buffer.h"
 
-#include <cstring>
-#include "base/arena.h"
-#include "base/string.h"
+#include <string.h>
 
 // ---- constants ----
 
@@ -70,6 +68,7 @@ struct TextLeaf {
     TextLeaf* prev;
     TextLeaf* next;
     u16 count;
+    u32 ref_count; // COW: 1 = exclusively owned, >1 = shared with snapshot(s)
     TextSummary summary;
     TextChunk chunks[TEXT_TREE_CAP];
 };
@@ -79,7 +78,8 @@ struct TextLeaf {
 struct TextNode {
     TextNode* next; // used only when node is in free list
     u16 count;
-    u8 height; // 1 = children are leaves, >1 = nodes
+    u8 height;     // 1 = children are leaves, >1 = nodes
+    u32 ref_count; // COW: 1 = exclusively owned, >1 = shared with snapshot(s)
     TextSummary summary;
     TextSummary child_summaries[TEXT_TREE_CAP];
     union {
@@ -90,10 +90,32 @@ struct TextNode {
 
 // ---- document ----
 
-struct TextPoint {
-    u64 line;
-    u64 col; // UTF-8 codepoint column, not a byte offset
-}; // 0-based
+#define TEXT_ANCHOR_MAX 64
+
+struct TextAnchor {
+    u64 offset;
+    TextAnchorBias bias;
+    bool active;
+};
+
+// Immutable snapshot of tree state for background readers (Tree-sitter, undo).
+// Read via text_snapshot_read (tree descent only — linked list may be stale).
+struct TextSnapshot {
+    TextNode* root;
+    TextLeaf* first_leaf; // for single-leaf docs (no root)
+    TextSummary total;
+    u64 version;
+};
+
+// One undo/redo record: captures tree state before the edit.
+struct TextEdit {
+    u64 offset;
+    u64 old_len;
+    u64 new_len;
+    TextSnapshot before;
+};
+
+#define TEXT_UNDO_MAX 256
 
 struct TextDocument {
     Arena* arena;
@@ -104,6 +126,17 @@ struct TextDocument {
     // Free list recycling (raddebugger pattern)
     TextNode* free_nodes;
     TextLeaf* free_leaves;
+    // Anchors: positions that survive edits (cursor, selections, bookmarks)
+    TextAnchor anchors[TEXT_ANCHOR_MAX];
+    u32 anchor_count;
+    // Version counter: incremented on every insert/delete
+    u64 version;
+    // Snapshot reference count: >0 means COW is active
+    u32 snapshot_count;
+    // Undo stack (snapshot-per-edit, circular buffer)
+    TextEdit undo_stack[TEXT_UNDO_MAX];
+    u32 undo_head;  // next slot to write
+    u32 undo_count; // valid entries (saturates at TEXT_UNDO_MAX)
 };
 
 // ---- forward declarations ----
@@ -129,6 +162,7 @@ internal TextLeaf* text_alloc_leaf(TextDocument* doc) {
     } else {
         leaf = push_struct(doc->arena, TextLeaf);
     }
+    leaf->ref_count = 1;
     return leaf;
 }
 
@@ -140,6 +174,7 @@ internal TextNode* text_alloc_node(TextDocument* doc) {
     } else {
         node = push_struct(doc->arena, TextNode);
     }
+    node->ref_count = 1;
     return node;
 }
 
@@ -234,7 +269,10 @@ internal void text_sync_total(TextDocument* doc) {
     doc->total = text_document_summary(doc);
 }
 
-internal void text_point_advance_by_summary(TextPoint* pt, TextSummary summary) {
+internal void text_point_advance_by_summary(
+    TextPoint* pt,
+    TextSummary summary
+) {
     pt->line += summary.lines;
     if(summary.lines > 0)
         pt->col = summary.tail_codepoints;
@@ -267,6 +305,109 @@ internal void node_recompute_all(TextNode* node) {
             node_recompute_all(node->nodes[i]);
     }
     node_recompute_summary(node);
+}
+
+// ---- anchor API ----
+
+u32
+text_anchor_create(TextDocument* doc, u64 offset, TextAnchorBias bias) {
+    for(u32 i = 0; i < TEXT_ANCHOR_MAX; ++i) {
+        if(!doc->anchors[i].active) {
+            doc->anchors[i] = {offset, bias, true};
+            if(i >= doc->anchor_count)
+                doc->anchor_count = i + 1;
+            return i;
+        }
+    }
+    assert(false, "text_anchor_create: too many anchors");
+    return 0;
+}
+
+void text_anchor_destroy(TextDocument* doc, u32 id) {
+    assert(
+        id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
+        "invalid anchor id"
+    );
+    doc->anchors[id].active = false;
+}
+
+u64 text_anchor_offset(TextDocument* doc, u32 id) {
+    assert(
+        id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
+        "invalid anchor id"
+    );
+    return doc->anchors[id].offset;
+}
+
+void text_anchor_set(TextDocument* doc, u32 id, u64 offset) {
+    assert(
+        id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
+        "invalid anchor id"
+    );
+    doc->anchors[id].offset = offset;
+}
+
+internal void text_anchors_adjust_insert(
+    TextDocument* doc,
+    u64 offset,
+    u64 len
+) {
+    for(u32 i = 0; i < doc->anchor_count; ++i) {
+        if(!doc->anchors[i].active)
+            continue;
+        u64 a = doc->anchors[i].offset;
+        if(a > offset ||
+           (a == offset && doc->anchors[i].bias == TEXT_ANCHOR_RIGHT))
+            doc->anchors[i].offset += len;
+    }
+}
+
+internal void text_anchors_adjust_delete(
+    TextDocument* doc,
+    u64 offset,
+    u64 len
+) {
+    for(u32 i = 0; i < doc->anchor_count; ++i) {
+        if(!doc->anchors[i].active)
+            continue;
+        u64 a = doc->anchors[i].offset;
+        if(a >= offset + len)
+            doc->anchors[i].offset -= len;
+        else if(a > offset)
+            doc->anchors[i].offset = offset;
+    }
+}
+
+// ---- COW helpers ----
+// Clone a node/leaf if it's shared (ref_count > 1). Returns the writable copy.
+
+internal TextNode* maybe_cow_node(TextDocument* doc, TextNode* node) {
+    if(node->ref_count <= 1)
+        return node;
+    TextNode* cow = text_alloc_node(doc);
+    *cow = *node;
+    cow->ref_count = 1;
+    --node->ref_count;
+    return cow;
+}
+
+internal TextLeaf* maybe_cow_leaf(TextDocument* doc, TextLeaf* leaf) {
+    if(leaf->ref_count <= 1)
+        return leaf;
+    TextLeaf* cow = text_alloc_leaf(doc);
+    *cow = *leaf;
+    cow->ref_count = 1;
+    --leaf->ref_count;
+    // Fix live-tree linked list so forward iteration stays correct
+    if(cow->next)
+        cow->next->prev = cow;
+    else
+        doc->last_leaf = cow;
+    if(cow->prev)
+        cow->prev->next = cow;
+    else
+        doc->first_leaf = cow;
+    return cow;
 }
 
 // ---- leaf insert ----
@@ -414,6 +555,7 @@ internal TextNodeSplit node_insert_small(
     TextSummary right_summary = {};
 
     if(node->height == 1) {
+        node->leaves[child_idx] = maybe_cow_leaf(doc, node->leaves[child_idx]);
         TextLeafSplit s = leaf_insert_small(
             doc,
             node->leaves[child_idx],
@@ -428,6 +570,7 @@ internal TextNodeSplit node_insert_small(
             right_summary = s.right_summary;
         }
     } else {
+        node->nodes[child_idx] = maybe_cow_node(doc, node->nodes[child_idx]);
         TextNodeSplit s = node_insert_small(
             doc,
             node->nodes[child_idx],
@@ -474,7 +617,7 @@ internal TextNodeSplit node_insert_small(
 
 // ---- public insert ----
 
-internal void text_insert(
+void text_insert(
     TextDocument* doc,
     u64 byte_offset,
     u8 const* bytes,
@@ -482,6 +625,9 @@ internal void text_insert(
 ) {
     assert(doc != nullptr, "doc must not be null");
     assert(byte_offset <= doc->total.bytes, "insert offset out of range");
+
+    text_anchors_adjust_insert(doc, byte_offset, len);
+    ++doc->version;
 
     // Segment large inserts so each leaf operation is ≤ TEXT_CHUNK_MAX bytes.
     u64 cursor = byte_offset;
@@ -493,16 +639,15 @@ internal void text_insert(
         assert(chunk > 0, "text insert made no forward progress");
 
         if(!doc->first_leaf) {
-            // Empty document: create first leaf
             doc->first_leaf = doc->last_leaf = text_alloc_leaf(doc);
         }
 
         if(!doc->root) {
-            // Single leaf
+            // COW single leaf if shared
+            doc->first_leaf = maybe_cow_leaf(doc, doc->first_leaf);
             TextLeafSplit s =
                 leaf_insert_small(doc, doc->first_leaf, cursor, p, chunk);
             if(s.did_split) {
-                // Promote to root node
                 TextNode* root = text_alloc_node(doc);
                 root->height = 1;
                 root->count = 2;
@@ -514,10 +659,10 @@ internal void text_insert(
                 doc->root = root;
             }
         } else {
+            doc->root = maybe_cow_node(doc, doc->root);
             TextNodeSplit s =
                 node_insert_small(doc, doc->root, cursor, p, chunk);
             if(s.did_split) {
-                // Root split: new root one level higher
                 TextNode* new_root = text_alloc_node(doc);
                 new_root->height = doc->root->height + 1;
                 new_root->count = 2;
@@ -596,7 +741,11 @@ internal void node_refresh_summary_for_leaf(
         assert(node->leaves[child_idx] == leaf, "leaf path refresh mismatch");
         node->child_summaries[child_idx] = leaf->summary;
     } else {
-        node_refresh_summary_for_leaf(node->nodes[child_idx], local_offset, leaf);
+        node_refresh_summary_for_leaf(
+            node->nodes[child_idx],
+            local_offset,
+            leaf
+        );
         node->child_summaries[child_idx] = node->nodes[child_idx]->summary;
     }
     node_recompute_summary(node);
@@ -664,7 +813,7 @@ text_resolve_byte_location(TextDocument* doc, u64 byte_offset) {
     return {};
 }
 
-internal u64 text_prev_char_boundary(TextDocument* doc, u64 byte_offset) {
+u64 text_prev_char_boundary(TextDocument* doc, u64 byte_offset) {
     if(byte_offset == 0)
         return 0;
 
@@ -681,7 +830,7 @@ internal u64 text_prev_char_boundary(TextDocument* doc, u64 byte_offset) {
     return result;
 }
 
-internal u64 text_next_char_boundary(TextDocument* doc, u64 byte_offset) {
+u64 text_next_char_boundary(TextDocument* doc, u64 byte_offset) {
     if(byte_offset >= doc->total.bytes)
         return doc->total.bytes;
 
@@ -741,18 +890,69 @@ internal bool leaf_delete_range(
     return leaf->count == 0;
 }
 
+// ---- delete rebalancing ----
+// Merge leaf with its right neighbor if combined chunks fit in one leaf.
+// leaf_start is the byte offset of leaf's first byte (for summary refresh).
+// Returns true if merge happened.
+internal bool leaf_try_merge_right(
+    TextDocument* doc,
+    TextLeaf* leaf,
+    u64 leaf_start
+) {
+    if(!leaf->next)
+        return false;
+    TextLeaf* right = leaf->next;
+    if(leaf->count + right->count > TEXT_TREE_CAP)
+        return false;
+
+    // Absorb right's chunks
+    for(int i = 0; i < right->count; ++i)
+        leaf->chunks[leaf->count + i] = right->chunks[i];
+    leaf->count += right->count;
+    leaf_recompute_summary(leaf);
+
+    // Unlink right from linked list
+    leaf->next = right->next;
+    if(right->next)
+        right->next->prev = leaf;
+    else
+        doc->last_leaf = leaf;
+
+    // Remove right from tree and refresh ancestor summaries
+    if(doc->root) {
+        bool root_empty = node_remove_leaf(doc, doc->root, right);
+        if(root_empty) {
+            text_free_node(doc, doc->root);
+            doc->root = nullptr;
+        } else if(doc->root->count == 1 && doc->root->height > 1) {
+            TextNode* old_root = doc->root;
+            doc->root = old_root->nodes[0];
+            text_free_node(doc, old_root);
+        }
+        if(doc->root)
+            node_refresh_summary_for_leaf(doc->root, leaf_start, leaf);
+    }
+    text_free_leaf(doc, right);
+    return true;
+}
+
 // ---- public delete ----
 
-internal void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
+void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
     assert(doc != nullptr, "doc must not be null");
     assert(byte_offset + len <= doc->total.bytes, "delete out of range");
     if(len == 0)
         return;
 
+    text_anchors_adjust_delete(doc, byte_offset, len);
+    ++doc->version;
+
     u64 remaining = len;
     while(remaining > 0) {
         TextLeafPos lp = text_find_leaf(doc, byte_offset);
-        TextLeaf* leaf = lp.leaf;
+        // COW leaf before mutation
+        TextLeaf* leaf = maybe_cow_leaf(doc, lp.leaf);
+        lp.leaf = leaf;
 
         u64 local_start = byte_offset - lp.leaf_start;
         u64 leaf_avail = leaf->summary.bytes - local_start;
@@ -777,18 +977,18 @@ internal void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
                     text_free_node(doc, doc->root);
                     doc->root = nullptr;
                 } else if(doc->root->count == 1 && doc->root->height > 1) {
-                    // Collapse unnecessary root level
                     TextNode* old_root = doc->root;
                     doc->root = old_root->nodes[0];
                     text_free_node(doc, old_root);
                 }
             }
             text_free_leaf(doc, leaf);
-            // byte_offset stays the same, content shifted left
         } else {
+            // Refresh summaries, then try merging underfull leaf with neighbor
             if(doc->root)
                 node_refresh_summary_for_leaf(doc->root, lp.leaf_start, leaf);
-            // byte_offset stays the same (we deleted from this position)
+            if(leaf->count < TEXT_TREE_BASE)
+                leaf_try_merge_right(doc, leaf, lp.leaf_start);
         }
 
         remaining -= delete_now;
@@ -799,7 +999,7 @@ internal void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
 
 // ---- create ----
 
-internal TextDocument* text_document_create(Arena* arena, String content) {
+TextDocument* text_document_create(Arena* arena, String content) {
     TextDocument* doc = push_struct(arena, TextDocument);
     doc->arena = arena;
 
@@ -815,10 +1015,10 @@ internal TextDocument* text_document_create(Arena* arena, String content) {
 
 // ---- queries ----
 
-internal u64 text_content_size(TextDocument* doc) {
+u64 text_content_size(TextDocument* doc) {
     return doc->total.bytes;
 }
-internal u64 text_line_count(TextDocument* doc) {
+u64 text_line_count(TextDocument* doc) {
     return doc->total.lines + 1;
 }
 
@@ -927,13 +1127,13 @@ internal bool text_point_to_offset_in_node(
 
         if(node->height == 1) {
             if(text_point_to_offset_in_leaf(
-                node->leaves[child_index],
-                target_line,
-                target_col,
-                line,
-                col,
-                offset
-            )) {
+                   node->leaves[child_index],
+                   target_line,
+                   target_col,
+                   line,
+                   col,
+                   offset
+               )) {
                 return true;
             }
             continue;
@@ -954,7 +1154,7 @@ internal bool text_point_to_offset_in_node(
 }
 
 // Convert logical byte offset → (line, col)
-internal TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
+TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
     u64 remaining =
         byte_offset < doc->total.bytes ? byte_offset : doc->total.bytes;
     TextPoint pt = {};
@@ -978,7 +1178,8 @@ internal TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
         for(int child_index = 0; child_index < node->count; ++child_index) {
             TextLeaf* leaf = node->leaves[child_index];
             if(remaining < leaf->summary.bytes) {
-                for(int chunk_index = 0; chunk_index < leaf->count; ++chunk_index) {
+                for(int chunk_index = 0; chunk_index < leaf->count;
+                    ++chunk_index) {
                     TextChunk* chunk = &leaf->chunks[chunk_index];
                     if(remaining < chunk->len) {
                         for(u16 byte_index = 0; byte_index < remaining;
@@ -1031,7 +1232,7 @@ internal TextPoint text_offset_to_point(TextDocument* doc, u64 byte_offset) {
 }
 
 // Convert (line, col) → logical byte offset
-internal u64 text_point_to_offset(TextDocument* doc, u64 line, u64 col) {
+u64 text_point_to_offset(TextDocument* doc, u64 line, u64 col) {
     u64 cur_line = 0;
     u64 cur_col = 0;
     u64 offset = 0;
@@ -1063,8 +1264,7 @@ internal u64 text_line_start_offset(TextDocument* doc, u64 line_idx) {
     return text_point_to_offset(doc, line_idx, 0);
 }
 
-internal u64
-text_line_end_offset_from(TextDocument* doc, u64 start_offset) {
+internal u64 text_line_end_offset_from(TextDocument* doc, u64 start_offset) {
     if(start_offset >= doc->total.bytes)
         return doc->total.bytes;
 
@@ -1099,6 +1299,99 @@ internal u64 text_line_end_offset(TextDocument* doc, u64 line_idx) {
     return text_line_end_offset_from(doc, start_offset);
 }
 
+// ---- iterator ----
+// Zero-copy sequential byte reader. Advances through chunks/leaves via linked
+// list. Use text_snapshot_read for snapshot (background thread) reads instead.
+
+struct TextIterator {
+    TextDocument* doc;
+    TextLeaf* leaf;
+    u16 chunk_index;
+    u16 byte_index;
+    u64 global_offset;
+};
+
+internal TextIterator
+text_iterator_at_offset(TextDocument* doc, u64 byte_offset) {
+    if(!doc->first_leaf || doc->total.bytes == 0)
+        return {doc, nullptr, 0, 0, 0};
+    if(byte_offset >= doc->total.bytes) {
+        TextLeaf* last = doc->last_leaf;
+        return {
+            doc,
+            last,
+            last ? (u16)last->count : (u16)0,
+            0,
+            doc->total.bytes
+        };
+    }
+    TextLeafPos lp = text_find_leaf(doc, byte_offset);
+    u64 local = byte_offset - lp.leaf_start;
+    u64 acc = 0;
+    for(int ci = 0; ci < lp.leaf->count; ++ci) {
+        u64 clen = lp.leaf->chunks[ci].len;
+        if(local < acc + clen)
+            return {doc, lp.leaf, (u16)ci, (u16)(local - acc), byte_offset};
+        acc += clen;
+    }
+    return {doc, lp.leaf, (u16)lp.leaf->count, 0, byte_offset};
+}
+
+internal TextIterator text_iterator_at_line(TextDocument* doc, u64 line) {
+    return text_iterator_at_offset(doc, text_point_to_offset(doc, line, 0));
+}
+
+internal u64 text_iterator_read(TextIterator* iter, u8* buf, u64 max_bytes) {
+    u64 written = 0;
+    while(written < max_bytes && iter->leaf) {
+        if(iter->chunk_index >= iter->leaf->count) {
+            iter->leaf = iter->leaf->next;
+            iter->chunk_index = 0;
+            iter->byte_index = 0;
+            if(!iter->leaf)
+                break;
+        }
+        TextChunk* chunk = &iter->leaf->chunks[iter->chunk_index];
+        u64 avail = chunk->len - iter->byte_index;
+        u64 copy =
+            avail < (max_bytes - written) ? avail : (max_bytes - written);
+        memcpy(buf + written, chunk->text + iter->byte_index, copy);
+        written += copy;
+        iter->byte_index += (u16)copy;
+        iter->global_offset += copy;
+        if(iter->byte_index >= chunk->len) {
+            ++iter->chunk_index;
+            iter->byte_index = 0;
+        }
+    }
+    return written;
+}
+
+internal void text_iterator_advance(TextIterator* iter, u64 n_bytes) {
+    u64 rem = n_bytes;
+    while(rem > 0 && iter->leaf) {
+        if(iter->chunk_index >= iter->leaf->count) {
+            iter->leaf = iter->leaf->next;
+            iter->chunk_index = 0;
+            iter->byte_index = 0;
+            if(!iter->leaf)
+                break;
+        }
+        TextChunk* chunk = &iter->leaf->chunks[iter->chunk_index];
+        u64 avail = chunk->len - iter->byte_index;
+        if(rem < avail) {
+            iter->byte_index += (u16)rem;
+            iter->global_offset += rem;
+            rem = 0;
+        } else {
+            iter->global_offset += avail;
+            rem -= avail;
+            ++iter->chunk_index;
+            iter->byte_index = 0;
+        }
+    }
+}
+
 // Copy one line's content into scratch arena. Returns a String slice.
 internal String
 text_line_content(TextDocument* doc, u64 line_idx, Arena* scratch) {
@@ -1109,29 +1402,153 @@ text_line_content(TextDocument* doc, u64 line_idx, Arena* scratch) {
         return {(u8 const*)"", 0};
 
     u8* buf = push_array(scratch, u8, size + 1);
-    u64 written = 0;
-
-    TextByteLocation location = text_resolve_byte_location(doc, start_offset);
-    for(TextLeaf* leaf = location.leaf; leaf && written < size;
-        leaf = leaf->next) {
-        int chunk_index = (leaf == location.leaf) ? location.chunk_index : 0;
-        u16 byte_index = (leaf == location.leaf) ? location.byte_index : 0;
-
-        for(; chunk_index < leaf->count && written < size; ++chunk_index) {
-            TextChunk* chunk = &leaf->chunks[chunk_index];
-            u64 copy_len = chunk->len - byte_index;
-            u64 remaining = size - written;
-            if(copy_len > remaining)
-                copy_len = remaining;
-            memcpy(buf + written, chunk->text + byte_index, copy_len);
-            written += copy_len;
-            byte_index = 0;
-        }
-    }
+    TextIterator iter = text_iterator_at_offset(doc, start_offset);
+    u64 written = text_iterator_read(&iter, buf, size);
 
     if(written > 0 && buf[written - 1] == '\n')
         --written;
-
     buf[written] = 0;
     return {buf, written};
+}
+
+// ---- snapshots ----
+// Immutable views used by background threads (Tree-sitter) and the undo stack.
+// Reading uses tree descent only — DO NOT walk leaf->next/prev on a snapshot.
+
+internal void text_snapshot_bump_node(TextNode* node) {
+    ++node->ref_count;
+    if(node->height == 1) {
+        for(int i = 0; i < node->count; ++i)
+            ++node->leaves[i]->ref_count;
+    } else {
+        for(int i = 0; i < node->count; ++i)
+            text_snapshot_bump_node(node->nodes[i]);
+    }
+}
+
+internal TextSnapshot text_snapshot(TextDocument* doc) {
+    TextSnapshot snap = {};
+    snap.root = doc->root;
+    snap.first_leaf = doc->first_leaf;
+    snap.total = doc->total;
+    snap.version = doc->version;
+    if(doc->root)
+        text_snapshot_bump_node(doc->root);
+    else if(doc->first_leaf)
+        ++doc->first_leaf->ref_count;
+    ++doc->snapshot_count;
+    return snap;
+}
+
+internal void text_snapshot_release_node(TextDocument* doc, TextNode* node) {
+    if(--node->ref_count == 0) {
+        if(node->height == 1) {
+            for(int i = 0; i < node->count; ++i) {
+                if(--node->leaves[i]->ref_count == 0)
+                    text_free_leaf(doc, node->leaves[i]);
+            }
+        } else {
+            for(int i = 0; i < node->count; ++i)
+                text_snapshot_release_node(doc, node->nodes[i]);
+        }
+        text_free_node(doc, node);
+    }
+}
+
+internal void text_snapshot_release(TextDocument* doc, TextSnapshot snap) {
+    if(snap.root)
+        text_snapshot_release_node(doc, snap.root);
+    else if(snap.first_leaf) {
+        if(--snap.first_leaf->ref_count == 0)
+            text_free_leaf(doc, snap.first_leaf);
+    }
+    --doc->snapshot_count;
+}
+
+// Read bytes from snapshot via tree descent (safe for background threads).
+// Returns bytes actually read (0 = past end).
+internal u64
+text_snapshot_read(TextSnapshot* snap, u64 offset, u8* buf, u64 max_bytes) {
+    if(offset >= snap->total.bytes)
+        return 0;
+    u64 to_read = snap->total.bytes - offset;
+    if(to_read > max_bytes)
+        to_read = max_bytes;
+    u64 written = 0;
+    u64 cursor = offset;
+
+    while(written < to_read) {
+        // Descent: find leaf and local offset via snapshot's tree
+        TextLeaf* leaf;
+        u64 leaf_start;
+        if(!snap->root) {
+            leaf = snap->first_leaf;
+            leaf_start = 0;
+        } else {
+            TextNode* node = snap->root;
+            u64 acc = 0;
+            while(node->height > 1) {
+                int i = 0;
+                for(; i < node->count - 1; ++i) {
+                    if(cursor - acc < node->child_summaries[i].bytes)
+                        break;
+                    acc += node->child_summaries[i].bytes;
+                }
+                node = node->nodes[i];
+            }
+            int i = 0;
+            for(; i < node->count - 1; ++i) {
+                if(cursor - acc < node->child_summaries[i].bytes)
+                    break;
+                acc += node->child_summaries[i].bytes;
+            }
+            leaf = node->leaves[i];
+            leaf_start = acc;
+        }
+
+        // Copy bytes from this leaf
+        u64 local = cursor - leaf_start;
+        u64 acc2 = 0;
+        for(int ci = 0; ci < leaf->count && written < to_read; ++ci) {
+            TextChunk* chunk = &leaf->chunks[ci];
+            if(local < acc2 + chunk->len) {
+                u16 start_in = (u16)(local - acc2);
+                u64 avail = chunk->len - start_in;
+                u64 copy =
+                    avail < (to_read - written) ? avail : (to_read - written);
+                memcpy(buf + written, chunk->text + start_in, copy);
+                written += copy;
+                cursor += copy;
+                local = 0;
+                acc2 = 0;
+                continue; // restart inner loop from beginning of next chunk
+            }
+            acc2 += chunk->len;
+        }
+        // Guard: if we made no progress (shouldn't happen), break
+        if(written == 0 && cursor == offset)
+            break;
+    }
+    return written;
+}
+
+// Push an undo entry with a before-snapshot. Call BEFORE mutating the doc.
+// Does nothing if at capacity (oldest entry silently dropped).
+internal void text_undo_push(
+    TextDocument* doc,
+    u64 offset,
+    u64 old_len,
+    u64 new_len
+) {
+    TextEdit* edit = &doc->undo_stack[doc->undo_head % TEXT_UNDO_MAX];
+    // Release old snapshot at this slot if overwriting
+    if(doc->undo_count == TEXT_UNDO_MAX)
+        text_snapshot_release(doc, edit->before);
+    edit->offset = offset;
+    edit->old_len = old_len;
+    edit->new_len = new_len;
+    edit->before = text_snapshot(doc);
+    doc->undo_head = (doc->undo_head + 1) % TEXT_UNDO_MAX;
+    if(doc->undo_count < TEXT_UNDO_MAX)
+        ++doc->undo_count;
 }

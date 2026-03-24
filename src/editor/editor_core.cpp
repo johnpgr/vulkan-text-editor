@@ -1,21 +1,11 @@
-#pragma once
+#include "editor/editor_core.h"
 
-#include "input.h"
-#include "push_cmds.cpp"
-#include "text_buffer.h"
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
+#include <GLFW/glfw3.h>
 
-struct EditorState {
-    Arena* permanent_arena;
-    Arena* transient_arena;
-    TextDocument* document;
-    i32 cursor_column;
-    i32 desired_column;
-    i32 cursor_row;
-    f32 blink_timer;
-    bool dirty;
-};
-
-internal void init_editor_state(
+void init_editor_state(
     EditorState* state,
     Arena* permanent_arena,
     Arena* transient_arena
@@ -28,45 +18,38 @@ internal void init_editor_state(
     state->permanent_arena = permanent_arena;
     state->transient_arena = transient_arena;
     state->document = text_document_create(permanent_arena, {});
+    state->cursor_anchor =
+        text_anchor_create(state->document, 0, TEXT_ANCHOR_RIGHT);
     state->dirty = true;
 }
 
-// Convert cursor (row, col) to a logical byte offset in the document.
 internal u64 cursor_to_offset(EditorState* state) {
-    return text_point_to_offset(
-        state->document,
-        (u64)state->cursor_row,
-        (u64)state->cursor_column
-    );
-}
+    assert(state != nullptr, "Editor state must not be null!");
 
-// Sync cursor (row, col) from a logical byte offset.
-internal void cursor_from_offset(EditorState* state, u64 offset) {
-    TextPoint pt = text_offset_to_point(state->document, offset);
-    state->cursor_row = (i32)pt.line;
-    state->cursor_column = (i32)pt.col;
+    return text_anchor_offset(state->document, state->cursor_anchor);
 }
 
 internal void set_cursor_from_offset(EditorState* state, u64 offset) {
-    cursor_from_offset(state, offset);
-    state->desired_column = state->cursor_column;
+    assert(state != nullptr, "Editor state must not be null!");
+
+    text_anchor_set(state->document, state->cursor_anchor, offset);
+    TextPoint pt = text_offset_to_point(state->document, offset);
+    state->desired_column = (i32)pt.col;
 }
 
 internal void snap_cursor_to_desired_column(EditorState* state) {
+    assert(state != nullptr, "Editor state must not be null!");
+
+    TextPoint pt = text_offset_to_point(state->document, cursor_to_offset(state));
     u64 offset = text_point_to_offset(
-        state->document,
-        (u64)state->cursor_row,
-        (u64)state->desired_column
+        state->document, pt.line, (u64)state->desired_column
     );
-    cursor_from_offset(state, offset);
+    text_anchor_set(state->document, state->cursor_anchor, offset);
 }
 
 internal void move_cursor(EditorState* state, EditorInput* input) {
     assert(state != nullptr, "Editor state must not be null!");
     assert(input != nullptr, "Editor input must not be null!");
-
-    u64 line_count = text_line_count(state->document);
-    i32 max_rows = line_count > 0 ? (i32)(line_count - 1) : 0;
 
     // Handle char input: insert UTF-8 encoded codepoints
     for(u32 i = 0; i < input->char_input_count; ++i) {
@@ -140,31 +123,37 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
             } break;
 
             case GLFW_KEY_UP: {
-                if(state->cursor_row > 0) {
-                    --state->cursor_row;
-                    snap_cursor_to_desired_column(state);
+                TextPoint pt =
+                    text_offset_to_point(state->document, cursor_to_offset(state));
+                if(pt.line > 0) {
+                    u64 off = text_point_to_offset(
+                        state->document, pt.line - 1, (u64)state->desired_column
+                    );
+                    text_anchor_set(state->document, state->cursor_anchor, off);
                 }
                 moved = true;
             } break;
 
             case GLFW_KEY_DOWN: {
-                if(state->cursor_row < max_rows) {
-                    ++state->cursor_row;
-                    snap_cursor_to_desired_column(state);
+                TextPoint pt =
+                    text_offset_to_point(state->document, cursor_to_offset(state));
+                u64 line_count = text_line_count(state->document);
+                if(pt.line + 1 < line_count) {
+                    u64 off = text_point_to_offset(
+                        state->document, pt.line + 1, (u64)state->desired_column
+                    );
+                    text_anchor_set(state->document, state->cursor_anchor, off);
                 }
                 moved = true;
             } break;
         }
     }
 
-    line_count = text_line_count(state->document);
-    max_rows = line_count > 0 ? (i32)(line_count - 1) : 0;
-    i32 clamped_row = clamp(state->cursor_row, 0, max_rows);
-    if(clamped_row != state->cursor_row) {
-        state->cursor_row = clamped_row;
-        snap_cursor_to_desired_column(state);
-    }
-    state->cursor_column = clamp(state->cursor_column, 0, 4096);
+    // Clamp cursor offset to document bounds (anchor already auto-updated on edit)
+    u64 doc_size = text_content_size(state->document);
+    u64 cur = cursor_to_offset(state);
+    if(cur > doc_size)
+        text_anchor_set(state->document, state->cursor_anchor, doc_size);
     state->desired_column = clamp(state->desired_column, 0, 4096);
 
     if(moved || input->char_input_count > 0 || input->scroll_delta != 0.0f) {
@@ -200,9 +189,11 @@ internal void push_cursor(
         return;
     }
 
+    TextPoint pt =
+        text_offset_to_point(state->document, cursor_to_offset(state));
     vec2 position = vec2(
-        margin_left + state->cursor_column * cell_width,
-        margin_top + state->cursor_row * cell_height
+        margin_left + (f32)pt.col * cell_width,
+        margin_top + (f32)pt.line * cell_height
     );
     vec2 center = vec2(
         position.x + 0.5f * cursor_width,
@@ -217,7 +208,7 @@ internal void push_cursor(
     );
 }
 
-internal void editor_update_and_render(
+void editor_update_and_render(
     EditorState* state,
     EditorInput* input,
     PushCmdBuffer* cmds

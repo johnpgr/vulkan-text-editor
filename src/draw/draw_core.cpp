@@ -1,38 +1,6 @@
-#pragma once
+#include "draw/draw_core.h"
 
-#include "base/arena.h"
-
-enum CmdType : u32 {
-    cmd_type_none,
-    cmd_type_clear,
-    cmd_type_rect,
-};
-
-struct PushCmd {
-    CmdType type;
-    u32 size;
-};
-
-struct CmdClear {
-    PushCmd header;
-    vec4 color;
-};
-
-struct CmdRect {
-    PushCmd header;
-    vec2 center;
-    vec2 size;
-    vec4 color;
-};
-
-struct PushCmdBuffer {
-    u8* base;
-    u32 capacity;
-    u32 used;
-    u32 cmd_count;
-};
-
-internal PushCmdBuffer create_push_cmd_buffer(Arena* arena, u32 capacity) {
+PushCmdBuffer create_push_cmd_buffer(Arena* arena, u32 capacity) {
     assert(arena != nullptr, "Arena must not be null!");
     assert(capacity > 0, "Push command buffer capacity must be non-zero!");
 
@@ -42,7 +10,7 @@ internal PushCmdBuffer create_push_cmd_buffer(Arena* arena, u32 capacity) {
     return result;
 }
 
-internal void push_cmd_buffer_reset(PushCmdBuffer* buffer) {
+void push_cmd_buffer_reset(PushCmdBuffer* buffer) {
     assert(buffer != nullptr, "Push command buffer must not be null!");
 
     buffer->used = 0;
@@ -76,19 +44,19 @@ internal PushCmd* push_cmd(
     return result;
 }
 
-internal void push_clear(PushCmdBuffer* buffer, vec4 color) {
+void push_clear(PushCmdBuffer* buffer, vec4 color) {
     CmdClear* cmd =
-        (CmdClear*)push_cmd(buffer, cmd_type_clear, sizeof(CmdClear));
+        (CmdClear*)push_cmd(buffer, CmdType_Clear, sizeof(CmdClear));
     cmd->color = color;
 }
 
-internal void push_rect(
+void push_rect(
     PushCmdBuffer* buffer,
     vec2 center,
     vec2 size,
     vec4 color
 ) {
-    CmdRect* cmd = (CmdRect*)push_cmd(buffer, cmd_type_rect, sizeof(CmdRect));
+    CmdRect* cmd = (CmdRect*)push_cmd(buffer, CmdType_Rect, sizeof(CmdRect));
     cmd->center = center;
     cmd->size = size;
     cmd->color = color;

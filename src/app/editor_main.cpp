@@ -1,13 +1,15 @@
-#include "base/arena.h"
-#include "base/core.h"
-#include "base/log.h"
-
+// [h]
+#include "base/base_mod.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include "renderer/vulkan.cpp"
-#include "input.h"
-#include "core.cpp"
+#include "editor/editor_mod.h"
+#include "render/render_mod.h"
+
+// [cpp]
+#include "base/base_mod.cpp"
+#include "editor/editor_mod.cpp"
+#include "render/render_mod.cpp"
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 800

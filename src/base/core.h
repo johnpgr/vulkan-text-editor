@@ -43,9 +43,9 @@
 #endif
 
 #if OS_WINDOWS
-#define export extern "C" __declspec(dllexport)
+#define EXPORT_FN extern "C" __declspec(dllexport)
 #else
-#define export extern "C"
+#define EXPORT_FN extern "C"
 #endif
 
 #define BIT(x) (1ULL << (x))

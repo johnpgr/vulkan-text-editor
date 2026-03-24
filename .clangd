@@ -23,6 +23,7 @@ Diagnostics:
       - readability-identifier-length
       - readability-braces-around-statements
       - readability-uppercase-literal-suffix
+      - readability-use-std-min-max
       - bugprone-suspicious-include
       - misc-non-private-member-variables-in-classes
       - bugprone-easily-swappable-parameters
