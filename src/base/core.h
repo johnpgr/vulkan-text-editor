@@ -2,7 +2,7 @@
 
 #include <cstdlib>
 
-#include "base/typedef.h"
+#include "base/types.h"
 #include "base/log.h"
 
 #if defined(__clang__)
@@ -43,9 +43,9 @@
 #endif
 
 #if OS_WINDOWS
-#define export extern "C" __declspec(dllexport)
+#define EXPORT_FN extern "C" __declspec(dllexport)
 #else
-#define export extern "C"
+#define EXPORT_FN extern "C"
 #endif
 
 #define BIT(x) (1ULL << (x))
@@ -54,25 +54,27 @@
 #define MB (KB * KB)
 #define GB (MB * KB)
 #define TB (GB * KB)
+#define clamp(value, min, max)                                                 \
+    (((value) < (min)) ? (min) : (((value) > (max)) ? (max) : (value)))
 
 #if COMPILER_MSVC
-#define assume(expr) __assume(expr)
+#define ASSUME(expr) __assume(expr)
 #elif COMPILER_CLANG || COMPILER_GCC
-#define assume(expr)                                                           \
+#define ASSUME(expr)                                                           \
     do {                                                                       \
         if(!(expr)) {                                                          \
             __builtin_unreachable();                                           \
         }                                                                      \
     } while(0)
 #else
-#define assume(expr) ((void)0)
+#define ASSUME(expr) ((void)0)
 #endif
 
 inline bool is_pow2(u64 value) {
     return value != 0 && (value & (value - 1)) == 0;
 }
 
-inline bool add_u64_overflow(u64 a, u64 b, u64 *out) {
+inline bool add_u64_overflow(u64 a, u64 b, u64* out) {
 #if COMPILER_CLANG || COMPILER_GCC
     return __builtin_add_overflow(a, b, out);
 #else
@@ -86,7 +88,7 @@ inline bool add_u64_overflow(u64 a, u64 b, u64 *out) {
 #endif
 }
 
-inline bool mul_u64_overflow(u64 a, u64 b, u64 *out) {
+inline bool mul_u64_overflow(u64 a, u64 b, u64* out) {
 #if COMPILER_CLANG || COMPILER_GCC
     return __builtin_mul_overflow(a, b, out);
 #else
@@ -100,7 +102,7 @@ inline bool mul_u64_overflow(u64 a, u64 b, u64 *out) {
 #endif
 }
 
-inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
+inline bool align_up_pow2_u64(u64 value, u64 alignment, u64* out) {
     if(!is_pow2(alignment)) {
         *out = 0;
         return true;
@@ -118,7 +120,7 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
 
 #ifndef NDEBUG
 #if COMPILER_MSVC
-#define assert(expr, msg)                                                      \
+#define ASSERT(expr, msg)                                                      \
     do {                                                                       \
         if(!(expr)) {                                                          \
             LOG_FATAL("assertion failed: %s - %s", #expr, msg);                \
@@ -126,7 +128,7 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
         }                                                                      \
     } while(0)
 #elif COMPILER_CLANG
-#define assert(expr, msg)                                                      \
+#define ASSERT(expr, msg)                                                      \
     do {                                                                       \
         if(!(expr)) {                                                          \
             LOG_FATAL("assertion failed: %s - %s", #expr, msg);                \
@@ -134,7 +136,7 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
         }                                                                      \
     } while(0)
 #elif COMPILER_GCC
-#define assert(expr, msg)                                                      \
+#define ASSERT(expr, msg)                                                      \
     do {                                                                       \
         if(!(expr)) {                                                          \
             LOG_FATAL("assertion failed: %s - %s", #expr, msg);                \
@@ -142,7 +144,7 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
         }                                                                      \
     } while(0)
 #else
-#define assert(expr, msg)                                                      \
+#define ASSERT(expr, msg)                                                      \
     do {                                                                       \
         if(!(expr)) {                                                          \
             LOG_FATAL("assertion failed: %s - %s", #expr, msg);                \
@@ -151,19 +153,5 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64 *out) {
     } while(0)
 #endif
 #else
-#define assert(expr, msg) ((void)sizeof((expr) ? true : false))
+#define ASSERT(expr, msg) ((void)sizeof((expr) ? true : false))
 #endif
-
-inline u32 clamp(u32 value, u32 min, u32 max) {
-    assert(min <= max, "Clamp range is invalid!");
-
-    u32 result = value;
-    if(result < min) {
-        result = min;
-    }
-    if(result > max) {
-        result = max;
-    }
-
-    return result;
-}

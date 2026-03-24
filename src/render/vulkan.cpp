@@ -1,42 +1,87 @@
-#include "renderer/vulkan.h"
+#include "render/vulkan.h"
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#define RGFW_VULKAN
+#define RGFW_IMPORT
+#include "third_party/rgfw/RGFW.h"
+#undef RGFW_IMPORT
+#undef RGFW_VULKAN
 
 #include "base/arena.h"
 #include "base/log.h"
 
 #include <cstdio>
 #include <cstring>
+#include <vulkan/vulkan.h>
 
-#if OS_MAC
-#include <mach-o/dyld.h>
-#elif OS_LINUX
-#include <unistd.h>
-#endif
+#define MAX_SWAPCHAIN_IMAGES 4
+
+struct VulkanSpritePushConstants {
+    vec2 center;
+    vec2 size;
+    vec4 color;
+    vec2 screen_size;
+};
+
+struct VulkanState {
+    Arena* arena;
+    RGFW_window* window;
+
+    VkInstance instance;
+    VkApplicationInfo app_info;
+    VkPhysicalDevice physical_device;
+    VkDevice device;
+    VkQueue graphics_queue;
+    VkSurfaceKHR surface;
+    u32 graphics_queue_family_index;
+    VkDebugUtilsMessengerEXT debug_messenger;
+    bool dynamic_rendering_supported;
+    bool initialized;
+    volatile bool fatal_error;
+
+    VkSwapchainKHR swapchain;
+    VkFormat swapchain_format;
+    VkExtent2D swapchain_extent;
+    u32 swapchain_image_count;
+    VkImage swapchain_images[MAX_SWAPCHAIN_IMAGES];
+    VkImageView swapchain_views[MAX_SWAPCHAIN_IMAGES];
+
+    VkCommandPool primary_pool;
+    VkCommandBuffer primary_cmd;
+
+    VkSemaphore image_available_semaphore;
+    VkSemaphore render_finished_semaphores[MAX_SWAPCHAIN_IMAGES];
+    VkFence frame_fence;
+
+    VkPipelineLayout pipeline_layout;
+    VkPipeline sprite_pipeline;
+
+    u32 frame_image_index;
+    bool frame_active;
+
+    PFN_vkCmdBeginRenderingKHR cmd_begin_rendering;
+    PFN_vkCmdEndRenderingKHR cmd_end_rendering;
+};
 
 global_variable VulkanState vk_state = {};
 
 #ifndef NDEBUG
-global_variable char const *validation_layer_name =
+global_variable char const* validation_layer_name =
     "VK_LAYER_KHRONOS_validation";
 #endif
-global_variable char const *portability_subset_extension_name =
+global_variable char const* portability_subset_extension_name =
     "VK_KHR_portability_subset";
+
+#ifndef ASSET_DIR
+#error "ASSET_DIR must be defined by the build."
+#endif
 
 struct SwapchainSupportInfo {
     VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR *formats;
+    VkSurfaceFormatKHR* formats;
     u32 format_count;
-    VkPresentModeKHR *present_modes;
+    VkPresentModeKHR* present_modes;
     u32 present_mode_count;
 };
-
-internal char const *get_glfw_error_string(void) {
-    char const *description = nullptr;
-    glfwGetError(&description);
-    return description != nullptr ? description : "Unknown GLFW error";
-}
 
 internal u32 get_target_api_version(void) {
     u32 api_version = VK_API_VERSION_1_0;
@@ -52,9 +97,9 @@ internal u32 get_target_api_version(void) {
     return VK_API_VERSION_1_0;
 }
 
-internal bool has_instance_extension(Arena *arena, char const *extension_name) {
-    assume(arena != nullptr);
-    assume(extension_name != nullptr);
+internal bool has_instance_extension(Arena* arena, char const* extension_name) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(extension_name != nullptr, "Extension name must not be null!");
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateInstanceExtensionProperties(
@@ -66,9 +111,9 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    VkExtensionProperties *extensions =
-        push_array(arena, extension_count, VkExtensionProperties);
+    Temp temporary_memory = temp_begin(arena);
+    VkExtensionProperties* extensions =
+        push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateInstanceExtensionProperties(
         nullptr,
@@ -76,7 +121,7 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         extensions
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -88,21 +133,24 @@ internal bool has_instance_extension(Arena *arena, char const *extension_name) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
-internal char const **get_instance_extensions(
-    Arena *arena,
-    u32 *out_extension_count
+internal char const** get_instance_extensions(
+    Arena* arena,
+    u32* out_extension_count
 ) {
-    assume(arena != nullptr);
-    assume(out_extension_count != nullptr);
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        out_extension_count != nullptr,
+        "Extension count output must not be null!"
+    );
 
-    u32 glfw_extension_count = 0;
-    char const **glfw_extensions =
-        glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-    if(glfw_extensions == nullptr || glfw_extension_count == 0) {
+    size_t rgfw_extension_count = 0;
+    char const** rgfw_extensions =
+        RGFW_getRequiredInstanceExtensions_Vulkan(&rgfw_extension_count);
+    if(rgfw_extensions == nullptr || rgfw_extension_count == 0) {
         *out_extension_count = 0;
         return nullptr;
     }
@@ -121,12 +169,12 @@ internal char const **get_instance_extensions(
     }
 #endif
 
-    u32 extension_count = glfw_extension_count + extra_extension_count;
-    char const **extensions = push_array(arena, extension_count, char const *);
+    u32 extension_count = (u32)rgfw_extension_count + extra_extension_count;
+    char const** extensions = push_array(arena, char const*, extension_count);
 
     u32 extension_index = 0;
-    for(u32 glfw_index = 0; glfw_index < glfw_extension_count; ++glfw_index) {
-        extensions[extension_index++] = glfw_extensions[glfw_index];
+    for(size_t rgfw_index = 0; rgfw_index < rgfw_extension_count; ++rgfw_index) {
+        extensions[extension_index++] = rgfw_extensions[rgfw_index];
     }
 
     if(has_instance_extension(
@@ -147,9 +195,9 @@ internal char const **get_instance_extensions(
     return extensions;
 }
 
-internal bool has_layer(Arena *arena, char const *layer_name) {
-    assume(arena != nullptr);
-    assume(layer_name != nullptr);
+internal bool has_layer(Arena* arena, char const* layer_name) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(layer_name != nullptr, "Layer name must not be null!");
 
     u32 layer_count = 0;
     VkResult result = vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
@@ -157,13 +205,13 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    VkLayerProperties *layers =
-        push_array(arena, layer_count, VkLayerProperties);
+    Temp temporary_memory = temp_begin(arena);
+    VkLayerProperties* layers =
+        push_array(arena, VkLayerProperties, layer_count);
 
     result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -175,7 +223,7 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
@@ -183,13 +231,13 @@ internal bool has_layer(Arena *arena, char const *layer_name) {
 internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_types,
-    VkDebugUtilsMessengerCallbackDataEXT const *callback_data,
-    void *user_data
+    VkDebugUtilsMessengerCallbackDataEXT const* callback_data,
+    void* user_data
 ) {
     (void)message_types;
     (void)user_data;
 
-    char const *message =
+    char const* message =
         (callback_data != nullptr && callback_data->pMessage != nullptr)
             ? callback_data->pMessage
             : "Unknown Vulkan validation message";
@@ -210,9 +258,12 @@ internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
 }
 
 internal void build_debug_messenger_create_info(
-    VkDebugUtilsMessengerCreateInfoEXT *out_create_info
+    VkDebugUtilsMessengerCreateInfoEXT* out_create_info
 ) {
-    assume(out_create_info != nullptr);
+    ASSERT(
+        out_create_info != nullptr,
+        "Debug messenger create info output must not be null!"
+    );
 
     *out_create_info = {};
     out_create_info->sType =
@@ -249,13 +300,16 @@ internal bool create_debug_messenger(void) {
 #endif
 
 internal bool has_device_extension(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    char const *extension_name
+    char const* extension_name
 ) {
-    assume(arena != nullptr);
-    assume(physical_device != VK_NULL_HANDLE);
-    assume(extension_name != nullptr);
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
+    ASSERT(extension_name != nullptr, "Extension name must not be null!");
 
     u32 extension_count = 0;
     VkResult result = vkEnumerateDeviceExtensionProperties(
@@ -268,9 +322,9 @@ internal bool has_device_extension(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    VkExtensionProperties *extensions =
-        push_array(arena, extension_count, VkExtensionProperties);
+    Temp temporary_memory = temp_begin(arena);
+    VkExtensionProperties* extensions =
+        push_array(arena, VkExtensionProperties, extension_count);
 
     result = vkEnumerateDeviceExtensionProperties(
         physical_device,
@@ -279,7 +333,7 @@ internal bool has_device_extension(
         extensions
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -291,16 +345,19 @@ internal bool has_device_extension(
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
 internal bool supports_dynamic_rendering(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device
 ) {
-    assume(arena != nullptr);
-    assume(physical_device != VK_NULL_HANDLE);
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
 
     VkPhysicalDeviceProperties properties = {};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
@@ -337,13 +394,19 @@ internal bool supports_dynamic_rendering(
 }
 
 internal bool find_graphics_queue_family(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    u32 *out_queue_family_index
+    u32* out_queue_family_index
 ) {
-    assume(arena != nullptr);
-    assume(physical_device != VK_NULL_HANDLE);
-    assume(out_queue_family_index != nullptr);
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
+    ASSERT(
+        out_queue_family_index != nullptr,
+        "Queue family index output must not be null!"
+    );
 
     u32 queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(
@@ -355,9 +418,9 @@ internal bool find_graphics_queue_family(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    VkQueueFamilyProperties *queue_families =
-        push_array(arena, queue_family_count, VkQueueFamilyProperties);
+    Temp temporary_memory = temp_begin(arena);
+    VkQueueFamilyProperties* queue_families =
+        push_array(arena, VkQueueFamilyProperties, queue_family_count);
 
     vkGetPhysicalDeviceQueueFamilyProperties(
         physical_device,
@@ -388,13 +451,16 @@ internal bool find_graphics_queue_family(
         break;
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return found;
 }
 
-internal u32 score_device(Arena *arena, VkPhysicalDevice physical_device) {
-    assume(arena != nullptr);
-    assume(physical_device != VK_NULL_HANDLE);
+internal u32 score_device(Arena* arena, VkPhysicalDevice physical_device) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
 
     u32 graphics_queue_family_index = 0;
     if(!find_graphics_queue_family(
@@ -429,13 +495,16 @@ internal u32 score_device(Arena *arena, VkPhysicalDevice physical_device) {
 }
 
 internal bool query_swapchain_support(
-    Arena *arena,
+    Arena* arena,
     VkPhysicalDevice physical_device,
-    SwapchainSupportInfo *out_info
+    SwapchainSupportInfo* out_info
 ) {
-    assume(arena != nullptr);
-    assume(physical_device != VK_NULL_HANDLE);
-    assume(out_info != nullptr);
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
+    ASSERT(out_info != nullptr, "Swapchain support output must not be null!");
 
     *out_info = {};
 
@@ -458,7 +527,7 @@ internal bool query_swapchain_support(
     }
 
     out_info->formats =
-        push_array(arena, out_info->format_count, VkSurfaceFormatKHR);
+        push_array(arena, VkSurfaceFormatKHR, out_info->format_count);
     if(vkGetPhysicalDeviceSurfaceFormatsKHR(
            physical_device,
            vk_state.surface,
@@ -479,22 +548,19 @@ internal bool query_swapchain_support(
     }
 
     out_info->present_modes =
-        push_array(arena, out_info->present_mode_count, VkPresentModeKHR);
-    if(vkGetPhysicalDeviceSurfacePresentModesKHR(
-           physical_device,
-           vk_state.surface,
-           &out_info->present_mode_count,
-           out_info->present_modes
-       ) != VK_SUCCESS) {
-        return false;
-    }
+        push_array(arena, VkPresentModeKHR, out_info->present_mode_count);
 
-    return true;
+    return vkGetPhysicalDeviceSurfacePresentModesKHR(
+               physical_device,
+               vk_state.surface,
+               &out_info->present_mode_count,
+               out_info->present_modes
+           ) == VK_SUCCESS;
 }
 
 internal VkSurfaceFormatKHR
-choose_surface_format(SwapchainSupportInfo *support) {
-    assume(support != nullptr);
+choose_surface_format(SwapchainSupportInfo* support) {
+    ASSERT(support != nullptr, "Swapchain support must not be null!");
 
     for(u32 index = 0; index < support->format_count; ++index) {
         VkSurfaceFormatKHR format = support->formats[index];
@@ -507,8 +573,8 @@ choose_surface_format(SwapchainSupportInfo *support) {
     return support->formats[0];
 }
 
-internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo *support) {
-    assume(support != nullptr);
+internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo* support) {
+    ASSERT(support != nullptr, "Swapchain support must not be null!");
 
     for(u32 index = 0; index < support->present_mode_count; ++index) {
         if(support->present_modes[index] == VK_PRESENT_MODE_FIFO_KHR) {
@@ -519,16 +585,16 @@ internal VkPresentModeKHR choose_present_mode(SwapchainSupportInfo *support) {
     return support->present_modes[0];
 }
 
-internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo *support) {
-    assume(support != nullptr);
+internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo* support) {
+    ASSERT(support != nullptr, "Swapchain support must not be null!");
 
     if(support->capabilities.currentExtent.width != UINT32_MAX) {
         return support->capabilities.currentExtent;
     }
 
-    int framebuffer_width = 0;
-    int framebuffer_height = 0;
-    glfwGetFramebufferSize(
+    i32 framebuffer_width = 0;
+    i32 framebuffer_height = 0;
+    RGFW_window_getSizeInPixels(
         vk_state.window,
         &framebuffer_width,
         &framebuffer_height
@@ -554,70 +620,25 @@ internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo *support) {
     return extent;
 }
 
-internal bool get_executable_directory_for_renderer(
-    char *buffer,
-    u64 buffer_size
-) {
-    assert(buffer != nullptr, "Executable path buffer must not be null!");
-    assert(buffer_size > 0, "Executable path buffer must not be empty!");
-
-#if OS_MAC
-    u32 path_size = (u32)buffer_size;
-    if(_NSGetExecutablePath(buffer, &path_size) != 0) {
-        return false;
-    }
-    buffer[buffer_size - 1] = 0;
-#elif OS_LINUX
-    ssize_t size_read = readlink("/proc/self/exe", buffer, buffer_size - 1);
-    if(size_read <= 0) {
-        return false;
-    }
-    buffer[size_read] = 0;
-#else
-    return false;
-#endif
-
-    char *last_slash = strrchr(buffer, '/');
-    if(last_slash == nullptr) {
-        return false;
-    }
-
-    *last_slash = 0;
-    return true;
-}
-
 internal bool build_shader_path(
-    char *buffer,
+    char* buffer,
     u64 buffer_size,
-    char const *file_name
+    char const* file_name
 ) {
-    assert(buffer != nullptr, "Shader path buffer must not be null!");
-    assert(file_name != nullptr, "Shader file name must not be null!");
+    ASSERT(buffer != nullptr, "Shader path buffer must not be null!");
+    ASSERT(file_name != nullptr, "Shader file name must not be null!");
 
-    char executable_directory[4096] = {};
-    if(!get_executable_directory_for_renderer(
-           executable_directory,
-           sizeof(executable_directory)
-       )) {
-        return false;
-    }
-
-    int written = snprintf(
-        buffer,
-        buffer_size,
-        "%s/shaders/%s",
-        executable_directory,
-        file_name
-    );
+    int written =
+        snprintf(buffer, buffer_size, "%s/shaders/%s", ASSET_DIR, file_name);
     return written > 0 && (u64)written < buffer_size;
 }
 
-internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
-    assert(arena != nullptr, "Arena must not be null!");
-    assert(path != nullptr, "File path must not be null!");
-    assert(out_size != nullptr, "Size output must not be null!");
+internal void* read_binary_file(Arena* arena, char const* path, u64* out_size) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(path != nullptr, "File path must not be null!");
+    ASSERT(out_size != nullptr, "Size output must not be null!");
 
-    FILE *file = fopen(path, "rb");
+    FILE* file = fopen(path, "rb");
     if(file == nullptr) {
         return nullptr;
     }
@@ -638,7 +659,7 @@ internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
         return nullptr;
     }
 
-    void *data = push_size(arena, (u64)file_size);
+    void* data = push_size(arena, (u64)file_size);
     usize read_size = fread(data, 1, (usize)file_size, file);
     fclose(file);
 
@@ -651,11 +672,11 @@ internal void *read_binary_file(Arena *arena, char const *path, u64 *out_size) {
 }
 
 internal bool create_shader_module(
-    char const *file_name,
-    VkShaderModule *out_shader_module
+    char const* file_name,
+    VkShaderModule* out_shader_module
 ) {
-    assert(file_name != nullptr, "Shader file name must not be null!");
-    assert(
+    ASSERT(file_name != nullptr, "Shader file name must not be null!");
+    ASSERT(
         out_shader_module != nullptr,
         "Shader module output must not be null!"
     );
@@ -666,20 +687,20 @@ internal bool create_shader_module(
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(vk_state.arena);
+    Temp temporary_memory = temp_begin(vk_state.arena);
     u64 shader_size = 0;
-    void *shader_data =
+    void* shader_data =
         read_binary_file(vk_state.arena, shader_path, &shader_size);
     if(shader_data == nullptr || shader_size == 0) {
         LOG_ERROR("Failed to read shader %s.", shader_path);
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
     VkShaderModuleCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     create_info.codeSize = shader_size;
-    create_info.pCode = (u32 const *)shader_data;
+    create_info.pCode = (u32 const*)shader_data;
 
     bool result = vkCreateShaderModule(
                       vk_state.device,
@@ -687,7 +708,7 @@ internal bool create_shader_module(
                       nullptr,
                       out_shader_module
                   ) == VK_SUCCESS;
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return result;
 }
 
@@ -854,21 +875,21 @@ cleanup:
 }
 
 internal bool wait_for_nonzero_framebuffer(void) {
-    int framebuffer_width = 0;
-    int framebuffer_height = 0;
+    i32 framebuffer_width = 0;
+    i32 framebuffer_height = 0;
 
     while(framebuffer_width == 0 || framebuffer_height == 0) {
-        if(glfwWindowShouldClose(vk_state.window)) {
+        if(RGFW_window_shouldClose(vk_state.window)) {
             return false;
         }
 
-        glfwGetFramebufferSize(
+        RGFW_window_getSizeInPixels(
             vk_state.window,
             &framebuffer_width,
             &framebuffer_height
         );
         if(framebuffer_width == 0 || framebuffer_height == 0) {
-            glfwWaitEvents();
+            RGFW_waitForEvent(RGFW_eventWaitNext);
         }
     }
 
@@ -876,14 +897,14 @@ internal bool wait_for_nonzero_framebuffer(void) {
 }
 
 internal bool create_swapchain(void) {
-    TemporaryMemory temporary_memory = begin_temporary_memory(vk_state.arena);
+    Temp temporary_memory = temp_begin(vk_state.arena);
     SwapchainSupportInfo support = {};
     if(!query_swapchain_support(
            vk_state.arena,
            vk_state.physical_device,
            &support
        )) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -901,7 +922,7 @@ internal bool create_swapchain(void) {
             "Swapchain image count %u exceeds MAX_SWAPCHAIN_IMAGES.",
             image_count
         );
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -926,7 +947,7 @@ internal bool create_swapchain(void) {
            nullptr,
            &vk_state.swapchain
        ) != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -936,7 +957,7 @@ internal bool create_swapchain(void) {
            &image_count,
            vk_state.swapchain_images
        ) != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -960,12 +981,12 @@ internal bool create_swapchain(void) {
                nullptr,
                &vk_state.swapchain_views[image_index]
            ) != VK_SUCCESS) {
-            end_temporary_memory(temporary_memory);
+            temp_end(temporary_memory);
             return false;
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return true;
 }
 
@@ -1016,12 +1037,7 @@ internal bool recreate_swapchain(void) {
     return true;
 }
 
-internal bool create_command_buffers(u32 lane_count) {
-    assert(lane_count > 0, "Lane count must be non-zero!");
-    assert(lane_count <= MAX_LANES, "Lane count exceeds MAX_LANES!");
-
-    vk_state.active_lane_count = lane_count;
-
+internal bool create_command_buffers(void) {
     VkCommandPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -1050,48 +1066,10 @@ internal bool create_command_buffers(u32 lane_count) {
         return false;
     }
 
-    for(u32 lane_index = 0; lane_index < lane_count; ++lane_index) {
-        if(vkCreateCommandPool(
-               vk_state.device,
-               &pool_info,
-               nullptr,
-               &vk_state.lane_pools[lane_index]
-           ) != VK_SUCCESS) {
-            return false;
-        }
-
-        VkCommandBufferAllocateInfo alloc_info = {};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.commandPool = vk_state.lane_pools[lane_index];
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-        alloc_info.commandBufferCount = 1;
-
-        if(vkAllocateCommandBuffers(
-               vk_state.device,
-               &alloc_info,
-               &vk_state.lane_cmds[lane_index]
-           ) != VK_SUCCESS) {
-            return false;
-        }
-    }
-
     return true;
 }
 
 internal void cleanup_command_buffers(void) {
-    for(u32 lane_index = 0; lane_index < ARRAY_COUNT(vk_state.lane_pools);
-        ++lane_index) {
-        if(vk_state.lane_pools[lane_index] != VK_NULL_HANDLE) {
-            vkDestroyCommandPool(
-                vk_state.device,
-                vk_state.lane_pools[lane_index],
-                nullptr
-            );
-            vk_state.lane_pools[lane_index] = VK_NULL_HANDLE;
-            vk_state.lane_cmds[lane_index] = VK_NULL_HANDLE;
-        }
-    }
-
     if(vk_state.primary_pool != VK_NULL_HANDLE) {
         vkDestroyCommandPool(vk_state.device, vk_state.primary_pool, nullptr);
         vk_state.primary_pool = VK_NULL_HANDLE;
@@ -1099,23 +1077,20 @@ internal void cleanup_command_buffers(void) {
     }
 }
 
-internal vec4 get_clear_color(RenderCommands *commands) {
+internal vec4 get_clear_color(PushCmdBuffer* buffer) {
+    ASSERT(buffer != nullptr, "Push command buffer must not be null!");
+
     vec4 result = vec4(0.04f, 0.05f, 0.08f, 1.0f);
 
-    for(u32 lane_index = 0; lane_index < commands->active_lane_count;
-        ++lane_index) {
-        LanePushBuffer *buffer = commands->lane_buffers + lane_index;
-        for(u32 offset = 0; offset < buffer->used;) {
-            RenderEntryHeader *header =
-                (RenderEntryHeader *)(buffer->base + offset);
-            if(header->type == render_entry_type_clear) {
-                RenderEntryClear *entry = (RenderEntryClear *)header;
-                result = entry->color;
-                return result;
-            }
-
-            offset += header->size;
+    for(u32 offset = 0; offset < buffer->used;) {
+        PushCmd* cmd = (PushCmd*)(buffer->base + offset);
+        if(cmd->type == CmdType_Clear) {
+            CmdClear* clear_cmd = (CmdClear*)cmd;
+            result = clear_cmd->color;
+            break;
         }
+
+        offset += cmd->size;
     }
 
     return result;
@@ -1158,8 +1133,8 @@ internal void transition_swapchain_image(
     );
 }
 
-internal bool pick_physical_device(Arena *arena) {
-    assume(arena != nullptr);
+internal bool pick_physical_device(Arena* arena) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
 
     u32 physical_device_count = 0;
     VkResult result = vkEnumeratePhysicalDevices(
@@ -1171,9 +1146,9 @@ internal bool pick_physical_device(Arena *arena) {
         return false;
     }
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    VkPhysicalDevice *physical_devices =
-        push_array(arena, physical_device_count, VkPhysicalDevice);
+    Temp temporary_memory = temp_begin(arena);
+    VkPhysicalDevice* physical_devices =
+        push_array(arena, VkPhysicalDevice, physical_device_count);
 
     result = vkEnumeratePhysicalDevices(
         vk_state.instance,
@@ -1181,7 +1156,7 @@ internal bool pick_physical_device(Arena *arena) {
         physical_devices
     );
     if(result != VK_SUCCESS) {
-        end_temporary_memory(temporary_memory);
+        temp_end(temporary_memory);
         return false;
     }
 
@@ -1195,13 +1170,16 @@ internal bool pick_physical_device(Arena *arena) {
         }
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return vk_state.physical_device != VK_NULL_HANDLE;
 }
 
-internal bool create_device(Arena *arena) {
-    assume(arena != nullptr);
-    assume(vk_state.physical_device != VK_NULL_HANDLE);
+internal bool create_device(Arena* arena) {
+    ASSERT(arena != nullptr, "Arena must not be null!");
+    ASSERT(
+        vk_state.physical_device != VK_NULL_HANDLE,
+        "Physical device must not be null!"
+    );
 
     if(!find_graphics_queue_family(
            arena,
@@ -1236,7 +1214,7 @@ internal bool create_device(Arena *arena) {
         portability_subset_extension_name
     );
 
-    char const *device_extensions[3] = {};
+    char const* device_extensions[3] = {};
     u32 device_extension_count = 0;
     device_extensions[device_extension_count++] =
         VK_KHR_SWAPCHAIN_EXTENSION_NAME;
@@ -1394,9 +1372,9 @@ bool begin_frame(void) {
         return false;
     }
 
-    int framebuffer_width = 0;
-    int framebuffer_height = 0;
-    glfwGetFramebufferSize(
+    i32 framebuffer_width = 0;
+    i32 framebuffer_height = 0;
+    RGFW_window_getSizeInPixels(
         vk_state.window,
         &framebuffer_width,
         &framebuffer_height
@@ -1456,104 +1434,8 @@ bool begin_frame(void) {
     return true;
 }
 
-internal bool vulkan_record_commands(RenderCommands *commands) {
-    assert(commands != nullptr, "Render commands must not be null!");
-
-    if(!vk_state.frame_active || vk_state.fatal_error) {
-        return !vk_state.fatal_error;
-    }
-
-    u32 lane_index = lane_idx();
-    assert(lane_index < vk_state.active_lane_count, "Lane index out of range!");
-
-    if(vkResetCommandPool(
-           vk_state.device,
-           vk_state.lane_pools[lane_index],
-           0
-       ) != VK_SUCCESS) {
-        LOG_ERROR("vkResetCommandPool failed for lane %u.", lane_index);
-        return false;
-    }
-
-    VkCommandBufferInheritanceRenderingInfoKHR rendering_info = {};
-    rendering_info.sType =
-        VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO_KHR;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachmentFormats = &vk_state.swapchain_format;
-    rendering_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkCommandBufferInheritanceInfo inheritance_info = {};
-    inheritance_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-    inheritance_info.pNext = &rendering_info;
-
-    VkCommandBufferBeginInfo begin_info = {};
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT |
-                       VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-    begin_info.pInheritanceInfo = &inheritance_info;
-
-    if(vkBeginCommandBuffer(vk_state.lane_cmds[lane_index], &begin_info) !=
-       VK_SUCCESS) {
-        LOG_ERROR("vkBeginCommandBuffer failed for lane %u.", lane_index);
-        return false;
-    }
-
-    vkCmdBindPipeline(
-        vk_state.lane_cmds[lane_index],
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        vk_state.sprite_pipeline
-    );
-
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (f32)vk_state.swapchain_extent.width;
-    viewport.height = (f32)vk_state.swapchain_extent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(vk_state.lane_cmds[lane_index], 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.extent = vk_state.swapchain_extent;
-    vkCmdSetScissor(vk_state.lane_cmds[lane_index], 0, 1, &scissor);
-
-    LanePushBuffer *buffer = commands->lane_buffers + lane_index;
-    for(u32 offset = 0; offset < buffer->used;) {
-        RenderEntryHeader *header =
-            (RenderEntryHeader *)(buffer->base + offset);
-        if(header->type == render_entry_type_rect) {
-            RenderEntryRect *entry = (RenderEntryRect *)header;
-            VulkanSpritePushConstants push_constants = {};
-            push_constants.center = entry->p;
-            push_constants.size = vec2(entry->width, entry->height);
-            push_constants.color = entry->color;
-            push_constants.screen_size =
-                vec2((f32)commands->screen_width, (f32)commands->screen_height);
-
-            vkCmdPushConstants(
-                vk_state.lane_cmds[lane_index],
-                vk_state.pipeline_layout,
-                VK_SHADER_STAGE_VERTEX_BIT,
-                0,
-                sizeof(push_constants),
-                &push_constants
-            );
-            vkCmdDraw(vk_state.lane_cmds[lane_index], 6, 1, 0, 0);
-        }
-
-        offset += header->size;
-    }
-
-    if(vkEndCommandBuffer(vk_state.lane_cmds[lane_index]) != VK_SUCCESS) {
-        LOG_ERROR("vkEndCommandBuffer failed for lane %u.", lane_index);
-        return false;
-    }
-
-    return true;
-}
-
-internal bool end_frame(RenderCommands *commands) {
-    assert(commands != nullptr, "Render commands must not be null!");
+bool render_drain_cmd_buffer(PushCmdBuffer* buffer) {
+    ASSERT(buffer != nullptr, "Push command buffer must not be null!");
 
     if(!vk_state.frame_active || vk_state.fatal_error) {
         return !vk_state.fatal_error;
@@ -1584,7 +1466,7 @@ internal bool end_frame(RenderCommands *commands) {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
     );
 
-    vec4 clear_color = get_clear_color(commands);
+    vec4 clear_color = get_clear_color(buffer);
     VkClearValue clear_value = {};
     clear_value.color.float32[0] = clear_color.r;
     clear_value.color.float32[1] = clear_color.g;
@@ -1602,19 +1484,61 @@ internal bool end_frame(RenderCommands *commands) {
 
     VkRenderingInfoKHR rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
-    rendering_info.flags =
-        VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT_KHR;
     rendering_info.renderArea.extent = vk_state.swapchain_extent;
     rendering_info.layerCount = 1;
     rendering_info.colorAttachmentCount = 1;
     rendering_info.pColorAttachments = &color_attachment;
 
     vk_state.cmd_begin_rendering(vk_state.primary_cmd, &rendering_info);
-    vkCmdExecuteCommands(
+
+    vkCmdBindPipeline(
         vk_state.primary_cmd,
-        vk_state.active_lane_count,
-        vk_state.lane_cmds
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        vk_state.sprite_pipeline
     );
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (f32)vk_state.swapchain_extent.width;
+    viewport.height = (f32)vk_state.swapchain_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(vk_state.primary_cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.extent = vk_state.swapchain_extent;
+    vkCmdSetScissor(vk_state.primary_cmd, 0, 1, &scissor);
+
+    vec2 screen_size = vec2(
+        (f32)vk_state.swapchain_extent.width,
+        (f32)vk_state.swapchain_extent.height
+    );
+
+    for(u32 offset = 0; offset < buffer->used;) {
+        PushCmd* cmd = (PushCmd*)(buffer->base + offset);
+        if(cmd->type == CmdType_Rect) {
+            CmdRect* rect_cmd = (CmdRect*)cmd;
+            VulkanSpritePushConstants push_constants = {};
+            push_constants.center = rect_cmd->center;
+            push_constants.size = rect_cmd->size;
+            push_constants.color = rect_cmd->color;
+            push_constants.screen_size = screen_size;
+
+            vkCmdPushConstants(
+                vk_state.primary_cmd,
+                vk_state.pipeline_layout,
+                VK_SHADER_STAGE_VERTEX_BIT,
+                0,
+                sizeof(push_constants),
+                &push_constants
+            );
+            vkCmdDraw(vk_state.primary_cmd, 6, 1, 0, 0);
+        }
+
+        offset += cmd->size;
+    }
+
     vk_state.cmd_end_rendering(vk_state.primary_cmd);
 
     transition_swapchain_image(
@@ -1680,30 +1604,6 @@ internal bool end_frame(RenderCommands *commands) {
     return true;
 }
 
-bool render_group_to_output(RenderCommands *commands) {
-    assert(commands != nullptr, "Render commands must not be null!");
-
-    bool result = true;
-    if(!vk_state.fatal_error) {
-        result = vulkan_record_commands(commands);
-        if(!result) {
-            vk_state.fatal_error = true;
-        }
-    }
-
-    lane_sync();
-
-    if(lane_idx() == 0 && !vk_state.fatal_error) {
-        result = end_frame(commands);
-        if(!result) {
-            vk_state.fatal_error = true;
-        }
-    }
-
-    lane_sync();
-    return !vk_state.fatal_error;
-}
-
 void cleanup_vulkan(void) {
     if(vk_state.device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(vk_state.device);
@@ -1746,11 +1646,9 @@ void cleanup_vulkan(void) {
     vk_state = {};
 }
 
-bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
-    assert(arena != nullptr, "Vulkan arena must not be null!");
-    assert(window != nullptr, "Vulkan window must not be null!");
-    assert(lane_count > 0, "Lane count must be non-zero!");
-    assert(lane_count <= MAX_LANES, "Lane count exceeds MAX_LANES!");
+bool init_vulkan(Arena* arena, RGFW_window* window) {
+    ASSERT(arena != nullptr, "Vulkan arena must not be null!");
+    ASSERT(window != nullptr, "Vulkan window must not be null!");
 
     bool result = false;
     if(vk_state.initialized) {
@@ -1759,10 +1657,9 @@ bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
 
     vk_state.arena = arena;
     vk_state.window = window;
-    vk_state.active_lane_count = lane_count;
 
-    TemporaryMemory temporary_memory = begin_temporary_memory(arena);
-    char const *layers[1] = {};
+    Temp temporary_memory = temp_begin(arena);
+    char const* layers[1] = {};
     u32 layer_count = 0;
     VkInstanceCreateInfo create_info = {};
 
@@ -1781,12 +1678,9 @@ bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
     vk_state.app_info = info;
 
     u32 extension_count = 0;
-    char const **extensions = get_instance_extensions(arena, &extension_count);
+    char const** extensions = get_instance_extensions(arena, &extension_count);
     if(extension_count == 0 || extensions == nullptr) {
-        LOG_FATAL(
-            "glfwGetRequiredInstanceExtensions failed: %s",
-            get_glfw_error_string()
-        );
+        LOG_FATAL("RGFW_getRequiredInstanceExtensions_Vulkan failed.");
         goto cleanup;
     }
 
@@ -1830,16 +1724,12 @@ bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
     }
 #endif
 
-    if(glfwCreateWindowSurface(
-           vk_state.instance,
+    if(RGFW_window_createSurface_Vulkan(
            window,
-           nullptr,
+           vk_state.instance,
            &vk_state.surface
        ) != VK_SUCCESS) {
-        LOG_FATAL(
-            "glfwCreateWindowSurface failed: %s",
-            get_glfw_error_string()
-        );
+        LOG_FATAL("RGFW_window_createSurface_Vulkan failed.");
         goto cleanup;
     }
 
@@ -1870,7 +1760,7 @@ bool init_vulkan(Arena *arena, GLFWwindow *window, u32 lane_count) {
         goto cleanup;
     }
 
-    if(!create_command_buffers(lane_count)) {
+    if(!create_command_buffers()) {
         LOG_FATAL("Failed to create Vulkan command buffers.");
         goto cleanup;
     }
@@ -1888,6 +1778,6 @@ cleanup:
         cleanup_vulkan();
     }
 
-    end_temporary_memory(temporary_memory);
+    temp_end(temporary_memory);
     return result;
 }

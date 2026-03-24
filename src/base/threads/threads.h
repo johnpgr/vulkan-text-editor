@@ -27,7 +27,7 @@ struct ThreadConditionVariable {
 #include <pthread.h>
 #include <unistd.h>
 
-typedef void *ThreadProcResult;
+typedef void* ThreadProcResult;
 #define THREAD_PROC_CALL
 #define THREAD_PROC_SUCCESS nullptr
 
@@ -44,28 +44,28 @@ struct ThreadConditionVariable {
 };
 #endif
 
-typedef ThreadProcResult THREAD_PROC_CALL ThreadProc(void *data);
+typedef ThreadProcResult THREAD_PROC_CALL ThreadProc(void* data);
 
-internal bool init_thread_mutex(ThreadMutex *mutex);
-internal void destroy_thread_mutex(ThreadMutex *mutex);
-internal void lock_thread_mutex(ThreadMutex *mutex);
-internal void unlock_thread_mutex(ThreadMutex *mutex);
+internal bool init_thread_mutex(ThreadMutex* mutex);
+internal void destroy_thread_mutex(ThreadMutex* mutex);
+internal void lock_thread_mutex(ThreadMutex* mutex);
+internal void unlock_thread_mutex(ThreadMutex* mutex);
 
 internal bool init_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 );
 internal void destroy_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 );
 internal void wake_all_thread_condition_variable(
-    ThreadConditionVariable *condition_variable
+    ThreadConditionVariable* condition_variable
 );
 internal void wait_thread_condition_variable(
-    ThreadConditionVariable *condition_variable,
-    ThreadMutex *mutex
+    ThreadConditionVariable* condition_variable,
+    ThreadMutex* mutex
 );
 
-internal bool create_thread(Thread *thread, ThreadProc *proc, void *data);
-internal void join_thread(Thread *thread);
+internal bool create_thread(Thread* thread, ThreadProc* proc, void* data);
+internal void join_thread(Thread* thread);
 
 internal u32 get_logical_processor_count(void);

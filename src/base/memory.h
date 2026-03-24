@@ -14,8 +14,8 @@
 #include <unistd.h>
 #endif
 
-inline void fatal_system_call(char const *operation) {
-    assert(operation != nullptr, "Operation name must not be null!");
+inline void fatal_system_call(char const* operation) {
+    ASSERT(operation != nullptr, "Operation name must not be null!");
 
 #if OS_WINDOWS
     DWORD error = GetLastError();
@@ -36,9 +36,9 @@ inline void fatal_system_call(char const *operation) {
     abort();
 }
 
-inline void *reserve_system_memory(u64 size) {
+inline void* reserve_system_memory(u64 size) {
 #if OS_WINDOWS
-    void *ptr = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
+    void* ptr = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
     if(ptr == nullptr) {
         fatal_system_call("VirtualAlloc reserve");
     }
@@ -50,7 +50,7 @@ inline void *reserve_system_memory(u64 size) {
 #else
         MAP_ANONYMOUS;
 #endif
-    void *ptr =
+    void* ptr =
         mmap(nullptr, size, PROT_NONE, MAP_PRIVATE | map_anon_flag, -1, 0);
     if(ptr == MAP_FAILED) {
         fatal_system_call("mmap reserve");
@@ -74,13 +74,13 @@ inline u64 get_system_page_size(void) {
 #endif
 }
 
-inline void commit_system_memory(void *ptr, u64 size) {
+inline void commit_system_memory(void* ptr, u64 size) {
     if(size == 0) {
         return;
     }
 
 #if OS_WINDOWS
-    void *result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
+    void* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE);
     if(result == nullptr) {
         fatal_system_call("VirtualAlloc commit");
     }
@@ -91,7 +91,7 @@ inline void commit_system_memory(void *ptr, u64 size) {
 #endif
 }
 
-inline void decommit_system_memory(void *ptr, u64 size) {
+inline void decommit_system_memory(void* ptr, u64 size) {
     if(size == 0) {
         return;
     }
@@ -110,7 +110,7 @@ inline void decommit_system_memory(void *ptr, u64 size) {
 #endif
 }
 
-inline void release_system_memory(void *ptr, u64 size) {
+inline void release_system_memory(void* ptr, u64 size) {
 #if OS_WINDOWS
     (void)size;
     if(ptr == nullptr) {
