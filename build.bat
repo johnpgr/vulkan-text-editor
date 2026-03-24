@@ -10,6 +10,7 @@ if "%release%"=="1" set debug=0
 set ROOT_DIR=%cd%
 set BIN_DIR=%ROOT_DIR%\bin
 set APP_MAIN=%ROOT_DIR%\src\app\editor_main.cpp
+set RGFW_IMPL_CPP=%ROOT_DIR%\src\third_party\rgfw\rgfw_impl.cpp
 if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 if not exist "%BIN_DIR%\shaders" mkdir "%BIN_DIR%\shaders"
 
@@ -39,6 +40,7 @@ for %%f in (
   "%ROOT_DIR%\src\render\vulkan.cpp"
   "%ROOT_DIR%\src\text\text_buffer.cpp"
   "%ROOT_DIR%\src\text\text_mod.cpp"
+  "%ROOT_DIR%\src\third_party\rgfw\rgfw_impl.cpp"
 ) do (
   cl %COMMON_FLAGS% %MODE_FLAGS% /Zs /TP "%%~f" || exit /b 1
 )
@@ -47,6 +49,7 @@ for %%f in (
   "%ROOT_DIR%\src\base\arena.h"
   "%ROOT_DIR%\src\base\base_mod.h"
   "%ROOT_DIR%\src\base\core.h"
+  "%ROOT_DIR%\src\base\list.h"
   "%ROOT_DIR%\src\base\log.h"
   "%ROOT_DIR%\src\base\memory.h"
   "%ROOT_DIR%\src\base\string.h"
@@ -61,9 +64,10 @@ for %%f in (
   "%ROOT_DIR%\src\render\vulkan.h"
   "%ROOT_DIR%\src\text\text_buffer.h"
   "%ROOT_DIR%\src\text\text_mod.h"
+  "%ROOT_DIR%\src\third_party\rgfw\RGFW.h"
 ) do (
   cl %COMMON_FLAGS% %MODE_FLAGS% /Zs /TP "%%~f" || exit /b 1
 )
 
-cl %COMMON_FLAGS% %MODE_FLAGS% /EHsc "%APP_MAIN%" /link glfw3.lib vulkan-1.lib /out:"%BIN_DIR%\main.exe" || exit /b 1
+cl %COMMON_FLAGS% %MODE_FLAGS% /EHsc "%APP_MAIN%" "%RGFW_IMPL_CPP%" /link vulkan-1.lib /out:"%BIN_DIR%\main.exe" || exit /b 1
 echo built %BIN_DIR%\main.exe

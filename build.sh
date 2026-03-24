@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 BIN_DIR="$ROOT_DIR/bin"
 APP_MAIN="$ROOT_DIR/src/app/editor_main.cpp"
+RGFW_IMPL_CPP="$ROOT_DIR/src/third_party/rgfw/rgfw_impl.cpp"
 COMMAND="${1:-debug}"
 MODE="${2:-debug}"
 
@@ -91,9 +92,6 @@ compile_shaders() {
 }
 
 setup_toolchain() {
-  read -r -a GLFW_CFLAGS <<<"$(pkg-config --cflags glfw3)"
-  read -r -a GLFW_LIBS <<<"$(pkg-config --libs glfw3)"
-
   VULKAN_INCLUDE_DIR="$(pkg-config --variable=includedir vulkan)"
   VULKAN_LIB_DIR="$(pkg-config --variable=libdir vulkan)"
 
@@ -118,8 +116,10 @@ setup_toolchain() {
   VULKAN_CFLAGS=(-I"$VULKAN_INCLUDE_DIR")
   if [[ "$PLATFORM" == "macos" ]]; then
     VULKAN_LIBS=(-L"$VULKAN_LIB_DIR" -Wl,-rpath,"$VULKAN_LIB_DIR" -lvulkan)
+    PLATFORM_LIBS=(-framework Cocoa -framework CoreVideo -framework IOKit)
   else
     VULKAN_LIBS=(-L"$VULKAN_LIB_DIR" -lvulkan)
+    PLATFORM_LIBS=(-lX11 -lXrandr -lm)
   fi
 
   COMMON_FLAGS=(
@@ -138,7 +138,6 @@ syntax_check_source() {
   "$CXX" \
     "${COMMON_FLAGS[@]}" \
     "${MODE_FLAGS[@]}" \
-    "${GLFW_CFLAGS[@]}" \
     "${VULKAN_CFLAGS[@]}" \
     -fsyntax-only \
     "$1"
@@ -148,7 +147,6 @@ syntax_check_header() {
   "$CXX" \
     "${COMMON_FLAGS[@]}" \
     "${MODE_FLAGS[@]}" \
-    "${GLFW_CFLAGS[@]}" \
     "${VULKAN_CFLAGS[@]}" \
     -x c++-header \
     -fsyntax-only \
@@ -195,11 +193,11 @@ do_build() {
   "$CXX" \
     "${COMMON_FLAGS[@]}" \
     "${MODE_FLAGS[@]}" \
-    "${GLFW_CFLAGS[@]}" \
     "${VULKAN_CFLAGS[@]}" \
     "$APP_MAIN" \
-    "${GLFW_LIBS[@]}" \
+    "$RGFW_IMPL_CPP" \
     "${VULKAN_LIBS[@]}" \
+    "${PLATFORM_LIBS[@]}" \
     -pthread \
     -o "$BIN_DIR/main"
 

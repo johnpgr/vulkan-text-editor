@@ -157,7 +157,7 @@ struct TextLeafSplit {
 internal TextLeaf* text_alloc_leaf(TextDocument* doc) {
     TextLeaf* leaf = doc->free_leaves;
     if(leaf) {
-        SLLStackPop(doc->free_leaves);
+        SLL_STACK_POP(doc->free_leaves);
         memset(leaf, 0, sizeof(*leaf));
     } else {
         leaf = push_struct(doc->arena, TextLeaf);
@@ -169,7 +169,7 @@ internal TextLeaf* text_alloc_leaf(TextDocument* doc) {
 internal TextNode* text_alloc_node(TextDocument* doc) {
     TextNode* node = doc->free_nodes;
     if(node) {
-        SLLStackPop(doc->free_nodes);
+        SLL_STACK_POP(doc->free_nodes);
         memset(node, 0, sizeof(*node));
     } else {
         node = push_struct(doc->arena, TextNode);
@@ -179,11 +179,11 @@ internal TextNode* text_alloc_node(TextDocument* doc) {
 }
 
 internal void text_free_leaf(TextDocument* doc, TextLeaf* leaf) {
-    SLLStackPush(doc->free_leaves, leaf);
+    SLL_STACK_PUSH(doc->free_leaves, leaf);
 }
 
 internal void text_free_node(TextDocument* doc, TextNode* node) {
-    SLLStackPush(doc->free_nodes, node);
+    SLL_STACK_PUSH(doc->free_nodes, node);
 }
 
 internal bool utf8_is_continuation(u8 byte) {
@@ -217,12 +217,15 @@ internal u16 text_partition_bytes_into_chunks(
     u64 remaining = len;
 
     while(remaining > 0) {
-        assert(
+        ASSERT(
             chunk_count < max_chunks,
             "text chunk partition overflowed fixed storage"
         );
         u16 chunk_size = text_chunk_size_for_bytes(bytes, remaining);
-        assert(chunk_size > 0, "text chunk partition made no forward progress");
+        ASSERT(
+            chunk_size > 0,
+            "text chunk partition made no forward progress"
+        );
         chunk_sizes[chunk_count++] = chunk_size;
         bytes += chunk_size;
         remaining -= chunk_size;
@@ -237,7 +240,7 @@ internal void text_write_leaf_chunks(
     u16 const* chunk_sizes,
     u16 chunk_count
 ) {
-    assert(
+    ASSERT(
         chunk_count <= TEXT_TREE_CAP,
         "leaf rewrite exceeded maximum chunk capacity"
     );
@@ -319,12 +322,12 @@ text_anchor_create(TextDocument* doc, u64 offset, TextAnchorBias bias) {
             return i;
         }
     }
-    assert(false, "text_anchor_create: too many anchors");
+    ASSERT(false, "text_anchor_create: too many anchors");
     return 0;
 }
 
 void text_anchor_destroy(TextDocument* doc, u32 id) {
-    assert(
+    ASSERT(
         id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
         "invalid anchor id"
     );
@@ -332,7 +335,7 @@ void text_anchor_destroy(TextDocument* doc, u32 id) {
 }
 
 u64 text_anchor_offset(TextDocument* doc, u32 id) {
-    assert(
+    ASSERT(
         id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
         "invalid anchor id"
     );
@@ -340,7 +343,7 @@ u64 text_anchor_offset(TextDocument* doc, u32 id) {
 }
 
 void text_anchor_set(TextDocument* doc, u32 id, u64 offset) {
-    assert(
+    ASSERT(
         id < TEXT_ANCHOR_MAX && doc->anchors[id].active,
         "invalid anchor id"
     );
@@ -449,7 +452,7 @@ internal TextLeafSplit leaf_insert_small(
         chunk_sizes,
         ARRAY_COUNT(chunk_sizes)
     );
-    assert(
+    ASSERT(
         chunk_count <= (TEXT_TREE_CAP * 2),
         "leaf insert overflowed two-leaf chunk capacity"
     );
@@ -471,10 +474,10 @@ internal TextLeafSplit leaf_insert_small(
 
     u16 left_count = chunk_count / 2;
     u16 right_count = chunk_count - left_count;
-    assert(left_count > 0, "split produced empty left leaf");
-    assert(right_count > 0, "split produced empty right leaf");
-    assert(left_count <= TEXT_TREE_CAP, "split left leaf overflowed");
-    assert(right_count <= TEXT_TREE_CAP, "split right leaf overflowed");
+    ASSERT(left_count > 0, "split produced empty left leaf");
+    ASSERT(right_count > 0, "split produced empty right leaf");
+    ASSERT(left_count <= TEXT_TREE_CAP, "split left leaf overflowed");
+    ASSERT(right_count <= TEXT_TREE_CAP, "split right leaf overflowed");
 
     u64 right_offset = 0;
     for(u16 chunk_index = 0; chunk_index < left_count; ++chunk_index)
@@ -623,8 +626,8 @@ void text_insert(
     u8 const* bytes,
     u64 len
 ) {
-    assert(doc != nullptr, "doc must not be null");
-    assert(byte_offset <= doc->total.bytes, "insert offset out of range");
+    ASSERT(doc != nullptr, "doc must not be null");
+    ASSERT(byte_offset <= doc->total.bytes, "insert offset out of range");
 
     text_anchors_adjust_insert(doc, byte_offset, len);
     ++doc->version;
@@ -636,7 +639,7 @@ void text_insert(
 
     while(remaining > 0) {
         u16 chunk = text_chunk_size_for_bytes(p, remaining);
-        assert(chunk > 0, "text insert made no forward progress");
+        ASSERT(chunk > 0, "text insert made no forward progress");
 
         if(!doc->first_leaf) {
             doc->first_leaf = doc->last_leaf = text_alloc_leaf(doc);
@@ -738,7 +741,7 @@ internal void node_refresh_summary_for_leaf(
     }
 
     if(node->height == 1) {
-        assert(node->leaves[child_idx] == leaf, "leaf path refresh mismatch");
+        ASSERT(node->leaves[child_idx] == leaf, "leaf path refresh mismatch");
         node->child_summaries[child_idx] = leaf->summary;
     } else {
         node_refresh_summary_for_leaf(
@@ -791,7 +794,7 @@ struct TextByteLocation {
 
 internal TextByteLocation
 text_resolve_byte_location(TextDocument* doc, u64 byte_offset) {
-    assert(byte_offset < doc->total.bytes, "byte offset out of range");
+    ASSERT(byte_offset < doc->total.bytes, "byte offset out of range");
 
     TextLeafPos lp = text_find_leaf(doc, byte_offset);
     u64 local_offset = byte_offset - lp.leaf_start;
@@ -809,7 +812,7 @@ text_resolve_byte_location(TextDocument* doc, u64 byte_offset) {
         accumulated += chunk->len;
     }
 
-    assert(false, "failed to resolve byte within leaf");
+    ASSERT(false, "failed to resolve byte within leaf");
     return {};
 }
 
@@ -939,8 +942,8 @@ internal bool leaf_try_merge_right(
 // ---- public delete ----
 
 void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
-    assert(doc != nullptr, "doc must not be null");
-    assert(byte_offset + len <= doc->total.bytes, "delete out of range");
+    ASSERT(doc != nullptr, "doc must not be null");
+    ASSERT(byte_offset + len <= doc->total.bytes, "delete out of range");
     if(len == 0)
         return;
 

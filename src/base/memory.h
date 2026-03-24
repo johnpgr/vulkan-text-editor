@@ -15,7 +15,7 @@
 #endif
 
 inline void fatal_system_call(char const* operation) {
-    assert(operation != nullptr, "Operation name must not be null!");
+    ASSERT(operation != nullptr, "Operation name must not be null!");
 
 #if OS_WINDOWS
     DWORD error = GetLastError();

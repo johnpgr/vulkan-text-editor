@@ -1,7 +1,18 @@
 // [h]
 #include "base/base_mod.h"
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+
+#define RGFW_VULKAN
+#define RGFW_IMPORT
+#include "third_party/rgfw/RGFW.h"
+#undef RGFW_IMPORT
+#undef RGFW_VULKAN
+
+#if OS_WINDOWS
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 #include "editor/editor_mod.h"
 #include "render/render_mod.h"
@@ -25,49 +36,37 @@ struct AppState {
     u32 fps_log_frame_count;
 };
 
-internal AppState* get_app_state(GLFWwindow* window) {
-    assert(window != nullptr, "Window must not be null!");
-
-    AppState* app_state = (AppState*)glfwGetWindowUserPointer(window);
-    assert(app_state != nullptr, "Window app state must not be null!");
-    return app_state;
+internal f64 get_time_seconds(void) {
+#if OS_WINDOWS
+    LARGE_INTEGER counter = {};
+    LARGE_INTEGER frequency = {};
+    QueryPerformanceCounter(&counter);
+    QueryPerformanceFrequency(&frequency);
+    return (f64)counter.QuadPart / (f64)frequency.QuadPart;
+#else
+    timespec ts = {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (f64)ts.tv_sec + (f64)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
-internal void key_callback(
-    GLFWwindow* window,
-    i32 key,
-    i32 scancode,
-    i32 action,
-    i32 mods
-) {
-    (void)scancode;
+internal f64 app_get_time(void) {
+    local_persist bool initialized = false;
+    local_persist f64 start_time = 0.0;
 
-    AppState* app_state = get_app_state(window);
-    if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-        return;
+    f64 current_time = get_time_seconds();
+    if(!initialized) {
+        start_time = current_time;
+        initialized = true;
     }
 
-    editor_input_push_key_event(&app_state->input, key, mods, action);
-}
-
-internal void char_callback(GLFWwindow* window, u32 codepoint) {
-    AppState* app_state = get_app_state(window);
-    editor_input_push_char(&app_state->input, codepoint);
-}
-
-internal void scroll_callback(GLFWwindow* window, f64 xoffset, f64 yoffset) {
-    (void)xoffset;
-
-    AppState* app_state = get_app_state(window);
-    editor_input_push_scroll(&app_state->input, yoffset);
+    return current_time - start_time;
 }
 
 int main(void) {
     int result = 0;
     f64 const fps_log_interval_seconds = 2.0;
-    GLFWwindow* window = nullptr;
-    bool glfw_initialized = false;
+    RGFW_window* window = nullptr;
     bool renderer_initialized = false;
     AppState app_state = {};
 
@@ -81,53 +80,82 @@ int main(void) {
         app_state.transient_arena
     );
 
-    if(!glfwInit()) {
-        LOG_FATAL("glfwInit failed.");
-        result = -1;
-        goto cleanup;
-    }
-    glfw_initialized = true;
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-
-    window = glfwCreateWindow(
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        "editor",
-        nullptr,
-        nullptr
-    );
+    window = RGFW_createWindow("editor", 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if(window == nullptr) {
-        char const* description = nullptr;
-        glfwGetError(&description);
-        LOG_FATAL(
-            "glfwCreateWindow failed: %s",
-            description != nullptr ? description : "Unknown error"
-        );
+        LOG_FATAL("RGFW_createWindow failed.");
         result = -1;
         goto cleanup;
     }
 
-    glfwSetWindowUserPointer(window, &app_state);
-    glfwSetKeyCallback(window, key_callback);
-    glfwSetCharCallback(window, char_callback);
-    glfwSetScrollCallback(window, scroll_callback);
+    RGFW_window_setExitKey(window, RGFW_keyNULL);
+    RGFW_window_setEnabledEvents(window, RGFW_allEventFlags);
 
     if(!init_vulkan(app_state.permanent_arena, window)) {
         result = -1;
         goto cleanup;
     }
     renderer_initialized = true;
-    app_state.last_frame_time = glfwGetTime();
+    app_state.last_frame_time = app_get_time();
 
-    while(!glfwWindowShouldClose(window)) {
-        f64 current_time = glfwGetTime();
+    while(!RGFW_window_shouldClose(window)) {
+        f64 current_time = app_get_time();
         f32 dt_for_frame = (f32)(current_time - app_state.last_frame_time);
         app_state.last_frame_time = current_time;
 
         editor_input_begin_frame(&app_state.input);
-        glfwPollEvents();
+        RGFW_event event = {};
+        bool should_exit = false;
+        while(RGFW_window_checkEvent(window, &event)) {
+            switch(event.type) {
+                case RGFW_eventNone:
+                case RGFW_keyReleased:
+                    break;
+
+                case RGFW_keyPressed: {
+                    if(event.key.value == RGFW_keyEscape) {
+                        RGFW_window_setShouldClose(window, RGFW_TRUE);
+                        should_exit = true;
+                        break;
+                    }
+
+                    editor_input_push_key_event(
+                        &app_state.input,
+                        (i32)event.key.value,
+                        (i32)event.key.mod,
+                        true,
+                        event.key.repeat
+                    );
+                } break;
+
+                case RGFW_keyChar: {
+                    editor_input_push_char(
+                        &app_state.input,
+                        event.keyChar.value
+                    );
+                } break;
+
+                case RGFW_mouseScroll: {
+                    editor_input_push_scroll(
+                        &app_state.input,
+                        event.delta.y
+                    );
+                } break;
+
+                case RGFW_windowClose: {
+                    RGFW_window_setShouldClose(window, RGFW_TRUE);
+                    should_exit = true;
+                } break;
+            }
+
+            if(should_exit) {
+                break;
+            }
+        }
+
+        if(should_exit) {
+            break;
+        }
+
         editor_input_snapshot_window(&app_state.input, window, dt_for_frame);
 
         arena_clear(app_state.transient_arena);
@@ -169,10 +197,7 @@ cleanup:
         cleanup_vulkan();
     }
     if(window != nullptr) {
-        glfwDestroyWindow(window);
-    }
-    if(glfw_initialized) {
-        glfwTerminate();
+        RGFW_window_close(window);
     }
     arena_release(app_state.transient_arena);
     arena_release(app_state.permanent_arena);

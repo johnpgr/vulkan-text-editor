@@ -1,18 +1,17 @@
 #include "editor/editor_core.h"
 
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
-#include <GLFW/glfw3.h>
+#define RGFW_IMPORT
+#include "third_party/rgfw/RGFW.h"
+#undef RGFW_IMPORT
 
 void init_editor_state(
     EditorState* state,
     Arena* permanent_arena,
     Arena* transient_arena
 ) {
-    assert(state != nullptr, "Editor state must not be null!");
-    assert(permanent_arena != nullptr, "Permanent arena must not be null!");
-    assert(transient_arena != nullptr, "Transient arena must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
+    ASSERT(permanent_arena != nullptr, "Permanent arena must not be null!");
+    ASSERT(transient_arena != nullptr, "Transient arena must not be null!");
 
     *state = {};
     state->permanent_arena = permanent_arena;
@@ -24,13 +23,13 @@ void init_editor_state(
 }
 
 internal u64 cursor_to_offset(EditorState* state) {
-    assert(state != nullptr, "Editor state must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
 
     return text_anchor_offset(state->document, state->cursor_anchor);
 }
 
 internal void set_cursor_from_offset(EditorState* state, u64 offset) {
-    assert(state != nullptr, "Editor state must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
 
     text_anchor_set(state->document, state->cursor_anchor, offset);
     TextPoint pt = text_offset_to_point(state->document, offset);
@@ -38,7 +37,7 @@ internal void set_cursor_from_offset(EditorState* state, u64 offset) {
 }
 
 internal void snap_cursor_to_desired_column(EditorState* state) {
-    assert(state != nullptr, "Editor state must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
 
     TextPoint pt = text_offset_to_point(state->document, cursor_to_offset(state));
     u64 offset = text_point_to_offset(
@@ -48,8 +47,8 @@ internal void snap_cursor_to_desired_column(EditorState* state) {
 }
 
 internal void move_cursor(EditorState* state, EditorInput* input) {
-    assert(state != nullptr, "Editor state must not be null!");
-    assert(input != nullptr, "Editor input must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
+    ASSERT(input != nullptr, "Editor input must not be null!");
 
     // Handle char input: insert UTF-8 encoded codepoints
     for(u32 i = 0; i < input->char_input_count; ++i) {
@@ -82,7 +81,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
         ++event_index) {
         KeyEvent* event = input->key_events + event_index;
         switch(event->key) {
-            case GLFW_KEY_BACKSPACE: {
+            case RGFW_keyBackSpace: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0) {
                     u64 del_offset =
@@ -94,7 +93,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 }
             } break;
 
-            case GLFW_KEY_ENTER: {
+            case RGFW_keyReturn: {
                 u64 offset = cursor_to_offset(state);
                 u8 newline = '\n';
                 text_insert(state->document, offset, &newline, 1);
@@ -102,7 +101,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 state->dirty = true;
             } break;
 
-            case GLFW_KEY_LEFT: {
+            case RGFW_keyLeft: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0)
                     set_cursor_from_offset(
@@ -112,7 +111,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case GLFW_KEY_RIGHT: {
+            case RGFW_keyRight: {
                 u64 offset = cursor_to_offset(state);
                 if(offset < text_content_size(state->document))
                     set_cursor_from_offset(
@@ -122,7 +121,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case GLFW_KEY_UP: {
+            case RGFW_keyUp: {
                 TextPoint pt =
                     text_offset_to_point(state->document, cursor_to_offset(state));
                 if(pt.line > 0) {
@@ -134,7 +133,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case GLFW_KEY_DOWN: {
+            case RGFW_keyDown: {
                 TextPoint pt =
                     text_offset_to_point(state->document, cursor_to_offset(state));
                 u64 line_count = text_line_count(state->document);
@@ -167,9 +166,9 @@ internal void push_cursor(
     EditorInput* input,
     PushCmdBuffer* cmds
 ) {
-    assert(state != nullptr, "Editor state must not be null!");
-    assert(input != nullptr, "Editor input must not be null!");
-    assert(cmds != nullptr, "Push command buffer must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
+    ASSERT(input != nullptr, "Editor input must not be null!");
+    ASSERT(cmds != nullptr, "Push command buffer must not be null!");
 
     f32 const blink_period = 1.0f;
     f32 const cursor_width = 3.0f;
@@ -213,9 +212,9 @@ void editor_update_and_render(
     EditorInput* input,
     PushCmdBuffer* cmds
 ) {
-    assert(state != nullptr, "Editor state must not be null!");
-    assert(input != nullptr, "Editor input must not be null!");
-    assert(cmds != nullptr, "Push command buffer must not be null!");
+    ASSERT(state != nullptr, "Editor state must not be null!");
+    ASSERT(input != nullptr, "Editor input must not be null!");
+    ASSERT(cmds != nullptr, "Push command buffer must not be null!");
 
     push_cmd_buffer_reset(cmds);
     push_clear(cmds, vec4(0.04f, 0.05f, 0.08f, 1.0f));

@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "base/core.h"
+#include "base/list.h"
 #include "base/memory.h"
 
 // Arena header lives in the first 128 bytes of each reserved block.
@@ -34,11 +35,11 @@ struct Temp {
 // --- helpers ---
 
 internal u64 align_up(u64 value, u64 alignment) {
-    assert(alignment != 0, "alignment must be non-zero");
-    assert(is_pow2(alignment), "alignment must be pow2");
+    ASSERT(alignment != 0, "alignment must be non-zero");
+    ASSERT(is_pow2(alignment), "alignment must be pow2");
     u64 result = 0;
     bool overflow = align_up_pow2_u64(value, alignment, &result);
-    assert(!overflow, "alignment overflow");
+    ASSERT(!overflow, "alignment overflow");
     return result;
 }
 
@@ -70,7 +71,7 @@ internal Arena* arena_alloc(
 }
 
 internal void arena_release(Arena* arena) {
-    assert(arena != nullptr, "arena must not be null");
+    ASSERT(arena != nullptr, "arena must not be null");
     for(Arena *block = arena->current, *prev = nullptr; block != nullptr;
         block = prev) {
         prev = block->prev;
@@ -79,7 +80,7 @@ internal void arena_release(Arena* arena) {
 }
 
 internal void* arena_push(Arena* arena, u64 size, u64 align, bool zero) {
-    assert(arena != nullptr, "arena must not be null");
+    ASSERT(arena != nullptr, "arena must not be null");
     Arena* current = arena->current;
 
     u64 pos_pre = align_up(current->pos, align);
@@ -99,7 +100,7 @@ internal void* arena_push(Arena* arena, u64 size, u64 align, bool zero) {
         block->base_pos = current->base_pos + current->res;
         block->res_size = current->res_size;
         block->cmt_size = current->cmt_size;
-        SLLStackPush_N(arena->current, block, prev);
+        SLL_STACK_PUSH_N(arena->current, block, prev);
         current = block;
         pos_pre = align_up(current->pos, align);
         pos_post = pos_pre + size;
@@ -125,12 +126,12 @@ internal void* arena_push(Arena* arena, u64 size, u64 align, bool zero) {
 }
 
 internal u64 arena_pos(Arena* arena) {
-    assert(arena != nullptr, "arena must not be null");
+    ASSERT(arena != nullptr, "arena must not be null");
     return arena->current->base_pos + arena->current->pos;
 }
 
 internal void arena_pop_to(Arena* arena, u64 pos) {
-    assert(arena != nullptr, "arena must not be null");
+    ASSERT(arena != nullptr, "arena must not be null");
     u64 big_pos = pos < ARENA_HEADER_SIZE ? (u64)ARENA_HEADER_SIZE : pos;
     Arena* current = arena->current;
     while(current->base_pos >= big_pos) {
@@ -140,7 +141,7 @@ internal void arena_pop_to(Arena* arena, u64 pos) {
     }
     arena->current = current;
     u64 new_pos = big_pos - current->base_pos;
-    assert(new_pos <= current->pos, "arena_pop_to: new_pos out of range");
+    ASSERT(new_pos <= current->pos, "arena_pop_to: new_pos out of range");
     current->pos = new_pos;
 }
 
@@ -149,7 +150,7 @@ internal void arena_clear(Arena* arena) {
 }
 
 internal Temp temp_begin(Arena* arena) {
-    assert(arena != nullptr, "arena must not be null");
+    ASSERT(arena != nullptr, "arena must not be null");
     return {arena, arena_pos(arena)};
 }
 
