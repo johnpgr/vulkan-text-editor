@@ -680,6 +680,56 @@ void text_insert(TextDocument* doc, u64 byte_offset, u8 const* bytes, u64 len) {
 
 // ---- delete helpers ----
 
+struct TextLeafPath {
+    TextNode* nodes[TEXT_MAX_DEPTH];
+    u16 child_indices[TEXT_MAX_DEPTH];
+    u16 depth;
+    TextLeaf* leaf;
+    u64 leaf_start;
+};
+
+internal TextLeafPath
+text_descend_to_writable_leaf(TextDocument* doc, u64 byte_offset) {
+    TextLeafPath path = {};
+
+    if(!doc->root) {
+        doc->first_leaf = maybe_cow_leaf(doc, doc->first_leaf);
+        path.leaf = doc->first_leaf;
+        return path;
+    }
+
+    doc->root = maybe_cow_node(doc, doc->root);
+    TextNode* node = doc->root;
+    u64 accumulated = 0;
+
+    for(;;) {
+        ASSERT(path.depth < TEXT_MAX_DEPTH, "text leaf path overflow");
+
+        int child_idx = 0;
+        for(; child_idx < node->count - 1; ++child_idx) {
+            if(byte_offset - accumulated <
+               node->child_summaries[child_idx].bytes)
+                break;
+            accumulated += node->child_summaries[child_idx].bytes;
+        }
+
+        path.nodes[path.depth] = node;
+        path.child_indices[path.depth] = (u16)child_idx;
+        ++path.depth;
+
+        if(node->height == 1) {
+            node->leaves[child_idx] =
+                maybe_cow_leaf(doc, node->leaves[child_idx]);
+            path.leaf = node->leaves[child_idx];
+            path.leaf_start = accumulated;
+            return path;
+        }
+
+        node->nodes[child_idx] = maybe_cow_node(doc, node->nodes[child_idx]);
+        node = node->nodes[child_idx];
+    }
+}
+
 // Remove child at index from node, update summaries.
 // Returns true if node is now empty.
 internal bool node_remove_child(TextNode* node, int idx) {
@@ -695,55 +745,61 @@ internal bool node_remove_child(TextNode* node, int idx) {
     return node->count == 0;
 }
 
-// Descend to find and remove a specific leaf pointer from the tree.
-// Returns true if node should be removed (empty).
-internal bool node_remove_leaf(
-    TextDocument* doc,
-    TextNode* node,
-    TextLeaf* leaf
-) {
-    if(node->height == 1) {
-        for(int i = 0; i < node->count; ++i) {
-            if(node->leaves[i] == leaf) {
-                return node_remove_child(node, i);
-            }
-        }
-        return false;
+internal void text_refresh_summary_along_path(TextLeafPath* path) {
+    for(int level = (int)path->depth - 1; level >= 0; --level) {
+        TextNode* node = path->nodes[level];
+        int child_idx = path->child_indices[level];
+        if(node->height == 1)
+            node->child_summaries[child_idx] = node->leaves[child_idx]->summary;
+        else
+            node->child_summaries[child_idx] = node->nodes[child_idx]->summary;
+        node_recompute_summary(node);
     }
-    for(int i = 0; i < node->count; ++i) {
-        if(node_remove_leaf(doc, node->nodes[i], leaf)) {
-            text_free_node(doc, node->nodes[i]);
-            return node_remove_child(node, i);
-        }
-    }
-    return false;
 }
 
-internal void node_refresh_summary_for_leaf(
-    TextNode* node,
-    u64 leaf_start,
-    TextLeaf* leaf
+internal void text_remove_leaf_along_path(
+    TextDocument* doc,
+    TextLeafPath* path
 ) {
-    int child_idx = 0;
-    u64 local_offset = leaf_start;
-    for(; child_idx < node->count - 1; ++child_idx) {
-        if(local_offset < node->child_summaries[child_idx].bytes)
-            break;
-        local_offset -= node->child_summaries[child_idx].bytes;
+    ASSERT(path->depth > 0, "tree remove requires a node path");
+
+    bool child_empty = node_remove_child(
+        path->nodes[path->depth - 1],
+        path->child_indices[path->depth - 1]
+    );
+
+    for(int level = (int)path->depth - 2; level >= 0; --level) {
+        TextNode* node = path->nodes[level];
+        int child_idx = path->child_indices[level];
+
+        if(child_empty) {
+            TextNode* empty_child = node->nodes[child_idx];
+            child_empty = node_remove_child(node, child_idx);
+            ASSERT(empty_child->count == 0, "removed node should be empty");
+            text_free_node(doc, empty_child);
+        } else {
+            node->child_summaries[child_idx] = node->nodes[child_idx]->summary;
+            node_recompute_summary(node);
+        }
+    }
+}
+
+internal void text_maybe_collapse_root(TextDocument* doc) {
+    if(!doc->root)
+        return;
+
+    if(doc->root->count == 0) {
+        TextNode* old_root = doc->root;
+        doc->root = nullptr;
+        text_free_node(doc, old_root);
+        return;
     }
 
-    if(node->height == 1) {
-        ASSERT(node->leaves[child_idx] == leaf, "leaf path refresh mismatch");
-        node->child_summaries[child_idx] = leaf->summary;
-    } else {
-        node_refresh_summary_for_leaf(
-            node->nodes[child_idx],
-            local_offset,
-            leaf
-        );
-        node->child_summaries[child_idx] = node->nodes[child_idx]->summary;
+    while(doc->root->height > 1 && doc->root->count == 1) {
+        TextNode* old_root = doc->root;
+        doc->root = old_root->nodes[0];
+        text_free_node(doc, old_root);
     }
-    node_recompute_summary(node);
 }
 
 // ---- find leaf by byte offset (tree descent) ----
@@ -896,7 +952,14 @@ internal bool leaf_try_merge_right(
 ) {
     if(!leaf->next)
         return false;
-    TextLeaf* right = leaf->next;
+    if(leaf->count + leaf->next->count > TEXT_TREE_CAP)
+        return false;
+
+    u64 right_start = leaf_start + leaf->summary.bytes;
+    TextLeafPath right_path = text_descend_to_writable_leaf(doc, right_start);
+    TextLeaf* right = right_path.leaf;
+
+    ASSERT(right == leaf->next, "merge path mismatch");
     if(leaf->count + right->count > TEXT_TREE_CAP)
         return false;
 
@@ -915,17 +978,12 @@ internal bool leaf_try_merge_right(
 
     // Remove right from tree and refresh ancestor summaries
     if(doc->root) {
-        bool root_empty = node_remove_leaf(doc, doc->root, right);
-        if(root_empty) {
-            text_free_node(doc, doc->root);
-            doc->root = nullptr;
-        } else if(doc->root->count == 1 && doc->root->height > 1) {
-            TextNode* old_root = doc->root;
-            doc->root = old_root->nodes[0];
-            text_free_node(doc, old_root);
-        }
-        if(doc->root)
-            node_refresh_summary_for_leaf(doc->root, leaf_start, leaf);
+        text_remove_leaf_along_path(doc, &right_path);
+        TextLeafPath merged_path =
+            text_descend_to_writable_leaf(doc, leaf_start);
+        ASSERT(merged_path.leaf == leaf, "merged leaf path mismatch");
+        text_refresh_summary_along_path(&merged_path);
+        text_maybe_collapse_root(doc);
     }
     text_free_leaf(doc, right);
     return true;
@@ -944,12 +1002,10 @@ void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
 
     u64 remaining = len;
     while(remaining > 0) {
-        TextLeafPos lp = text_find_leaf(doc, byte_offset);
-        // COW leaf before mutation
-        TextLeaf* leaf = maybe_cow_leaf(doc, lp.leaf);
-        lp.leaf = leaf;
+        TextLeafPath path = text_descend_to_writable_leaf(doc, byte_offset);
+        TextLeaf* leaf = path.leaf;
 
-        u64 local_start = byte_offset - lp.leaf_start;
+        u64 local_start = byte_offset - path.leaf_start;
         u64 leaf_avail = leaf->summary.bytes - local_start;
         u64 delete_now = remaining < leaf_avail ? remaining : leaf_avail;
 
@@ -966,24 +1022,16 @@ void text_delete(TextDocument* doc, u64 byte_offset, u64 len) {
             else
                 doc->last_leaf = leaf->prev;
 
-            if(doc->root) {
-                bool root_empty = node_remove_leaf(doc, doc->root, leaf);
-                if(root_empty) {
-                    text_free_node(doc, doc->root);
-                    doc->root = nullptr;
-                } else if(doc->root->count == 1 && doc->root->height > 1) {
-                    TextNode* old_root = doc->root;
-                    doc->root = old_root->nodes[0];
-                    text_free_node(doc, old_root);
-                }
-            }
+            if(doc->root)
+                text_remove_leaf_along_path(doc, &path);
+            text_maybe_collapse_root(doc);
             text_free_leaf(doc, leaf);
         } else {
             // Refresh summaries, then try merging underfull leaf with neighbor
             if(doc->root)
-                node_refresh_summary_for_leaf(doc->root, lp.leaf_start, leaf);
+                text_refresh_summary_along_path(&path);
             if(leaf->count < TEXT_TREE_BASE)
-                leaf_try_merge_right(doc, leaf, lp.leaf_start);
+                leaf_try_merge_right(doc, leaf, path.leaf_start);
         }
 
         remaining -= delete_now;

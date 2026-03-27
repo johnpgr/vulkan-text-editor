@@ -2,7 +2,7 @@
 
 #include <stdarg.h>
 
-#include "base/base_types.h"
+#include "base/base_core.h"
 
 enum LogLevel : u8 {
     LOG_LEVEL_FATAL = 0,
@@ -13,11 +13,11 @@ enum LogLevel : u8 {
     LOG_LEVEL_TRACE = 5,
 };
 
-void log_write_v(LogLevel level, char const* fmt, va_list args)
-    __attribute__((format(printf, 2, 0)));
-
-void log_write(LogLevel level, char const* fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+void log_write_v(LogLevel level, char const* fmt, va_list args) PRINTF_FORMAT(
+    2,
+    0
+);
+void log_write(LogLevel level, char const* fmt, ...) PRINTF_FORMAT(2, 3);
 
 #define LOG_FATAL(...) log_write(LOG_LEVEL_FATAL, __VA_ARGS__)
 #define LOG_ERROR(...) log_write(LOG_LEVEL_ERROR, __VA_ARGS__)

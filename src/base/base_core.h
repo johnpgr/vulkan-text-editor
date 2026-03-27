@@ -1,10 +1,9 @@
 #pragma once
 
 #include <stdlib.h> // for abort
-#include <time.h> // for clock_gettime on Linux
+#include <time.h>   // for clock_gettime on Linux
 
 #include "base/base_types.h"
-#include "base/base_log.h"
 
 #if defined(__clang__)
 #define COMPILER_CLANG 1
@@ -21,8 +20,18 @@
 #if defined(_MSC_VER)
 #define COMPILER_MSVC 1
 #include <intrin.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #else
 #define COMPILER_MSVC 0
+#endif
+
+// Printf format attribute for compile-time format string checking
+#if COMPILER_CLANG || COMPILER_GCC
+#define PRINTF_FORMAT(fmt_idx, args_idx)                                       \
+    __attribute__((format(printf, fmt_idx, args_idx)))
+#else
+#define PRINTF_FORMAT(fmt_idx, args_idx)
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -118,7 +127,6 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64* out) {
     *out = sum & ~(alignment - 1);
     return false;
 }
-
 
 inline f64 get_ticks_f64(void) {
 #if OS_WINDOWS
