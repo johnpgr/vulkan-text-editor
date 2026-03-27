@@ -22,7 +22,7 @@ if not exist "%bin_dir%" mkdir "%bin_dir%"
 set vendor_dir=%root_dir%\vendor
 set vulkan_dir=%vendor_dir%\vulkan
 set glfw_dir=%vendor_dir%\glfw
-set common=/std:c++14 /nologo /W4 /WX /wd4505 /wd4127 /wd4201 /wd4996 /I"%src_dir%" /I"%vulkan_dir%\Include" /I"%glfw_dir%\include" /DASSET_DIR=\"%bin_dir_fwd%\"
+set common=/std:c++11 /nologo /W4 /WX /wd4505 /wd4127 /wd4201 /wd4996 /I"%src_dir%" /I"%vulkan_dir%\Include" /I"%glfw_dir%\include" /DASSET_DIR=\"%bin_dir_fwd%\"
 if "%debug%"=="1"   set compile=cl %common% /Od /Zi
 if "%release%"=="1" set compile=cl %common% /O2 /DNDEBUG
 set libs=/LIBPATH:"%vulkan_dir%\Lib" /LIBPATH:"%glfw_dir%\lib" vulkan-1.lib glfw3_mt.lib user32.lib gdi32.lib shell32.lib
