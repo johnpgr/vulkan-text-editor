@@ -51,7 +51,13 @@ internal f64 app_get_time(void) {
     return current_time - start_time;
 }
 
-internal void glfw_key_callback(GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
+internal void glfw_key_callback(
+    GLFWwindow* window,
+    int key,
+    int /*scancode*/,
+    int action,
+    int mods
+) {
     AppState* app = (AppState*)glfwGetWindowUserPointer(window);
     if(action == GLFW_PRESS || action == GLFW_REPEAT) {
         if(key == GLFW_KEY_ESCAPE) {
@@ -60,7 +66,9 @@ internal void glfw_key_callback(GLFWwindow* window, int key, int /*scancode*/, i
             return;
         }
         editor_input_push_key_event(
-            &app->input, key, mods,
+            &app->input,
+            key,
+            mods,
             action == GLFW_PRESS,
             action == GLFW_REPEAT
         );
@@ -72,7 +80,11 @@ internal void glfw_char_callback(GLFWwindow* window, unsigned int codepoint) {
     editor_input_push_char(&app->input, codepoint);
 }
 
-internal void glfw_scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset) {
+internal void glfw_scroll_callback(
+    GLFWwindow* window,
+    double /*xoffset*/,
+    double yoffset
+) {
     AppState* app = (AppState*)glfwGetWindowUserPointer(window);
     editor_input_push_scroll(&app->input, yoffset);
 }
@@ -90,6 +102,7 @@ int main(void) {
 
     app_state.permanent_arena = arena_alloc();
     app_state.transient_arena = arena_alloc();
+    editor_input_init(&app_state.input, app_state.permanent_arena);
     app_state.render_cmds =
         create_push_cmd_buffer(app_state.permanent_arena, (u32)(128 * KB));
     init_editor_state(
@@ -106,7 +119,13 @@ int main(void) {
     glfw_initialized = true;
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Vulkan text editor", nullptr, nullptr);
+    window = glfwCreateWindow(
+        WINDOW_WIDTH,
+        WINDOW_HEIGHT,
+        "Vulkan text editor",
+        nullptr,
+        nullptr
+    );
     if(window == nullptr) {
         LOG_FATAL("glfwCreateWindow failed.");
         result = -1;
@@ -132,7 +151,6 @@ int main(void) {
         f32 dt_for_frame = (f32)(current_time - app_state.last_frame_time);
         app_state.last_frame_time = current_time;
 
-        editor_input_begin_frame(&app_state.input);
         glfwPollEvents();
 
         if(!app_state.running) {
@@ -143,16 +161,16 @@ int main(void) {
 
         arena_clear(app_state.transient_arena);
 
-        if(!begin_frame()) {
-            result = -1;
-            break;
-        }
-
         editor_update(
             &app_state.editor,
             &app_state.input,
             &app_state.render_cmds
         );
+
+        if(!begin_frame()) {
+            result = -1;
+            break;
+        }
 
         if(!render_submit(&app_state.render_cmds)) {
             result = -1;

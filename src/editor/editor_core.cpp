@@ -37,9 +37,12 @@ internal void set_cursor_from_offset(EditorState* state, u64 offset) {
 internal void snap_cursor_to_desired_column(EditorState* state) {
     ASSERT(state != nullptr, "Editor state must not be null!");
 
-    TextPoint pt = text_offset_to_point(state->document, cursor_to_offset(state));
+    TextPoint pt =
+        text_offset_to_point(state->document, cursor_to_offset(state));
     u64 offset = text_point_to_offset(
-        state->document, pt.line, (u64)state->desired_column
+        state->document,
+        pt.line,
+        (u64)state->desired_column
     );
     text_anchor_set(state->document, state->cursor_anchor, offset);
 }
@@ -48,112 +51,143 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
     ASSERT(state != nullptr, "Editor state must not be null!");
     ASSERT(input != nullptr, "Editor input must not be null!");
 
-    // Handle char input: insert UTF-8 encoded codepoints
-    for(u32 i = 0; i < input->char_input_count; ++i) {
-        u32 cp = input->char_inputs[i];
-        u8 utf8[4];
-        u32 utf8_len = 0;
-        if(cp < 0x80) {
-            utf8[utf8_len++] = (u8)cp;
-        } else if(cp < 0x800) {
-            utf8[utf8_len++] = (u8)(0xC0 | (cp >> 6));
-            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
-        } else if(cp < 0x10000) {
-            utf8[utf8_len++] = (u8)(0xE0 | (cp >> 12));
-            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
-            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
-        } else {
-            utf8[utf8_len++] = (u8)(0xF0 | (cp >> 18));
-            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 12) & 0x3F));
-            utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
-            utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
-        }
-        u64 offset = cursor_to_offset(state);
-        text_insert(state->document, offset, utf8, utf8_len);
-        set_cursor_from_offset(state, offset + utf8_len);
-        state->dirty = true;
-    }
-
     bool moved = false;
-    for(u32 event_index = 0; event_index < input->key_event_count;
-        ++event_index) {
-        KeyEvent* event = input->key_events + event_index;
-        switch(event->key) {
-            case GLFW_KEY_BACKSPACE: {
-                u64 offset = cursor_to_offset(state);
-                if(offset > 0) {
-                    u64 del_offset =
-                        text_prev_char_boundary(state->document, offset);
-                    u64 del_size = offset - del_offset;
-                    text_delete(state->document, del_offset, del_size);
-                    set_cursor_from_offset(state, del_offset);
-                    state->dirty = true;
+    bool edited = false;
+    bool scrolled = false;
+    EditorInputEvent event = {};
+    while(editor_input_pop_event(input, &event)) {
+        switch(event.type) {
+            case EDITOR_INPUT_EVENT_KEY: {
+                switch(event.key.key) {
+                    case GLFW_KEY_BACKSPACE: {
+                        u64 offset = cursor_to_offset(state);
+                        if(offset > 0) {
+                            u64 del_offset = text_prev_char_boundary(
+                                state->document,
+                                offset
+                            );
+                            u64 del_size = offset - del_offset;
+                            text_delete(state->document, del_offset, del_size);
+                            set_cursor_from_offset(state, del_offset);
+                            state->dirty = true;
+                            edited = true;
+                        }
+                    } break;
+
+                    case GLFW_KEY_ENTER: {
+                        u64 offset = cursor_to_offset(state);
+                        u8 newline = '\n';
+                        text_insert(state->document, offset, &newline, 1);
+                        set_cursor_from_offset(state, offset + 1);
+                        state->dirty = true;
+                        edited = true;
+                    } break;
+
+                    case GLFW_KEY_LEFT: {
+                        u64 offset = cursor_to_offset(state);
+                        if(offset > 0)
+                            set_cursor_from_offset(
+                                state,
+                                text_prev_char_boundary(state->document, offset)
+                            );
+                        moved = true;
+                    } break;
+
+                    case GLFW_KEY_RIGHT: {
+                        u64 offset = cursor_to_offset(state);
+                        if(offset < text_content_size(state->document))
+                            set_cursor_from_offset(
+                                state,
+                                text_next_char_boundary(state->document, offset)
+                            );
+                        moved = true;
+                    } break;
+
+                    case GLFW_KEY_UP: {
+                        TextPoint pt = text_offset_to_point(
+                            state->document,
+                            cursor_to_offset(state)
+                        );
+                        if(pt.line > 0) {
+                            u64 off = text_point_to_offset(
+                                state->document,
+                                pt.line - 1,
+                                (u64)state->desired_column
+                            );
+                            text_anchor_set(
+                                state->document,
+                                state->cursor_anchor,
+                                off
+                            );
+                        }
+                        moved = true;
+                    } break;
+
+                    case GLFW_KEY_DOWN: {
+                        TextPoint pt = text_offset_to_point(
+                            state->document,
+                            cursor_to_offset(state)
+                        );
+                        u64 line_count = text_line_count(state->document);
+                        if(pt.line + 1 < line_count) {
+                            u64 off = text_point_to_offset(
+                                state->document,
+                                pt.line + 1,
+                                (u64)state->desired_column
+                            );
+                            text_anchor_set(
+                                state->document,
+                                state->cursor_anchor,
+                                off
+                            );
+                        }
+                        moved = true;
+                    } break;
                 }
             } break;
 
-            case GLFW_KEY_ENTER: {
+            case EDITOR_INPUT_EVENT_CHAR: {
+                u32 cp = event.codepoint;
+                u8 utf8[4];
+                u32 utf8_len = 0;
+                if(cp < 0x80) {
+                    utf8[utf8_len++] = (u8)cp;
+                } else if(cp < 0x800) {
+                    utf8[utf8_len++] = (u8)(0xC0 | (cp >> 6));
+                    utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+                } else if(cp < 0x10000) {
+                    utf8[utf8_len++] = (u8)(0xE0 | (cp >> 12));
+                    utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+                    utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+                } else {
+                    utf8[utf8_len++] = (u8)(0xF0 | (cp >> 18));
+                    utf8[utf8_len++] = (u8)(0x80 | ((cp >> 12) & 0x3F));
+                    utf8[utf8_len++] = (u8)(0x80 | ((cp >> 6) & 0x3F));
+                    utf8[utf8_len++] = (u8)(0x80 | (cp & 0x3F));
+                }
                 u64 offset = cursor_to_offset(state);
-                u8 newline = '\n';
-                text_insert(state->document, offset, &newline, 1);
-                set_cursor_from_offset(state, offset + 1);
+                text_insert(state->document, offset, utf8, utf8_len);
+                set_cursor_from_offset(state, offset + utf8_len);
                 state->dirty = true;
+                edited = true;
             } break;
 
-            case GLFW_KEY_LEFT: {
-                u64 offset = cursor_to_offset(state);
-                if(offset > 0)
-                    set_cursor_from_offset(
-                        state,
-                        text_prev_char_boundary(state->document, offset)
-                    );
-                moved = true;
-            } break;
-
-            case GLFW_KEY_RIGHT: {
-                u64 offset = cursor_to_offset(state);
-                if(offset < text_content_size(state->document))
-                    set_cursor_from_offset(
-                        state,
-                        text_next_char_boundary(state->document, offset)
-                    );
-                moved = true;
-            } break;
-
-            case GLFW_KEY_UP: {
-                TextPoint pt =
-                    text_offset_to_point(state->document, cursor_to_offset(state));
-                if(pt.line > 0) {
-                    u64 off = text_point_to_offset(
-                        state->document, pt.line - 1, (u64)state->desired_column
-                    );
-                    text_anchor_set(state->document, state->cursor_anchor, off);
-                }
-                moved = true;
-            } break;
-
-            case GLFW_KEY_DOWN: {
-                TextPoint pt =
-                    text_offset_to_point(state->document, cursor_to_offset(state));
-                u64 line_count = text_line_count(state->document);
-                if(pt.line + 1 < line_count) {
-                    u64 off = text_point_to_offset(
-                        state->document, pt.line + 1, (u64)state->desired_column
-                    );
-                    text_anchor_set(state->document, state->cursor_anchor, off);
-                }
-                moved = true;
+            case EDITOR_INPUT_EVENT_SCROLL: {
+                if(event.scroll_delta != 0.0f)
+                    scrolled = true;
             } break;
         }
     }
 
-    // Clamp cursor offset to document bounds (anchor already auto-updated on edit)
+    // Clamp cursor offset to document bounds (anchor already auto-updated on
+    // edit)
     u64 doc_size = text_content_size(state->document);
     u64 cur = cursor_to_offset(state);
     if(cur > doc_size)
         text_anchor_set(state->document, state->cursor_anchor, doc_size);
     state->desired_column = clamp(state->desired_column, 0, 4096);
 
-    if(moved || input->char_input_count > 0 || input->scroll_delta != 0.0f) {
+    if(moved || edited || scrolled) {
         state->blink_timer = 0.0f;
         state->dirty = true;
     }
