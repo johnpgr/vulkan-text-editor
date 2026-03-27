@@ -207,7 +207,7 @@ internal void push_cursor(
     );
 }
 
-void editor_update_and_render(
+void editor_update(
     EditorState* state,
     EditorInput* input,
     PushCmdBuffer* cmds

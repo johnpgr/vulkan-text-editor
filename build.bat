@@ -18,14 +18,17 @@ set COMMON_FLAGS=/std:c++14 /nologo /W4 /WX /wd4505 /wd4127 /I"%ROOT_DIR%\src" /
 if "%debug%"=="1" set MODE_FLAGS=/Od /Zi
 if "%release%"=="1" set MODE_FLAGS=/O2 /DNDEBUG
 
-where glslangValidator >nul 2>nul
-if "%ERRORLEVEL%"=="0" (
-  glslangValidator -V "%ROOT_DIR%\assets\shaders\sprite.vert" -o "%BIN_DIR%\shaders\sprite.vert.spv" || exit /b 1
-  glslangValidator -V "%ROOT_DIR%\assets\shaders\sprite.frag" -o "%BIN_DIR%\shaders\sprite.frag.spv" || exit /b 1
-) else (
-  where glslc >nul 2>nul || (echo missing shader compiler: glslangValidator or glslc & exit /b 1)
-  glslc "%ROOT_DIR%\assets\shaders\sprite.vert" -o "%BIN_DIR%\shaders\sprite.vert.spv" || exit /b 1
-  glslc "%ROOT_DIR%\assets\shaders\sprite.frag" -o "%BIN_DIR%\shaders\sprite.frag.spv" || exit /b 1
+if "%shaders%"=="1" (
+  where glslangValidator >nul 2>nul
+  if "!ERRORLEVEL!"=="0" (
+    glslangValidator -V "%ROOT_DIR%\assets\shaders\sprite.vert" -o "%BIN_DIR%\shaders\sprite.vert.spv" || exit /b 1
+    glslangValidator -V "%ROOT_DIR%\assets\shaders\sprite.frag" -o "%BIN_DIR%\shaders\sprite.frag.spv" || exit /b 1
+  ) else (
+    where glslc >nul 2>nul || (echo missing shader compiler: glslangValidator or glslc & exit /b 1)
+    glslc "%ROOT_DIR%\assets\shaders\sprite.vert" -o "%BIN_DIR%\shaders\sprite.vert.spv" || exit /b 1
+    glslc "%ROOT_DIR%\assets\shaders\sprite.frag" -o "%BIN_DIR%\shaders\sprite.frag.spv" || exit /b 1
+  )
+  echo compiled shaders
 )
 
 for %%f in (
@@ -76,3 +79,4 @@ for %%f in (
 
 cl %COMMON_FLAGS% %MODE_FLAGS% /EHsc "%APP_MAIN%" "%RGFW_IMPL_CPP%" /link vulkan-1.lib /out:"%BIN_DIR%\main.exe" || exit /b 1
 echo built %BIN_DIR%\main.exe
+exit /b 0

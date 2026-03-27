@@ -1434,7 +1434,7 @@ bool begin_frame(void) {
     return true;
 }
 
-bool render_drain_cmd_buffer(PushCmdBuffer* buffer) {
+bool render_submit(PushCmdBuffer* buffer) {
     ASSERT(buffer != nullptr, "Push command buffer must not be null!");
 
     if(!vk_state.frame_active || vk_state.fatal_error) {
@@ -1578,6 +1578,17 @@ bool render_drain_cmd_buffer(PushCmdBuffer* buffer) {
         LOG_ERROR("vkQueueSubmit failed.");
         return false;
     }
+
+    return true;
+}
+
+bool end_frame(void) {
+    if(!vk_state.frame_active || vk_state.fatal_error) {
+        return !vk_state.fatal_error;
+    }
+
+    VkSemaphore render_finished_semaphore =
+        vk_state.render_finished_semaphores[vk_state.frame_image_index];
 
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

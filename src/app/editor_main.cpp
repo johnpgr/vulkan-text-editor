@@ -26,6 +26,7 @@
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 800
+#define FPS_LOG_INTERVAL_SECONDS 2.0F
 
 struct AppState {
     Arena* permanent_arena;
@@ -36,27 +37,15 @@ struct AppState {
     f64 last_frame_time;
     f64 fps_log_elapsed;
     u32 fps_log_frame_count;
+    bool initialized;
+    bool running;
 };
-
-internal f64 get_time_seconds(void) {
-#if OS_WINDOWS
-    LARGE_INTEGER counter = {};
-    LARGE_INTEGER frequency = {};
-    QueryPerformanceCounter(&counter);
-    QueryPerformanceFrequency(&frequency);
-    return (f64)counter.QuadPart / (f64)frequency.QuadPart;
-#else
-    timespec ts = {};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (f64)ts.tv_sec + (f64)ts.tv_nsec / 1000000000.0;
-#endif
-}
 
 internal f64 app_get_time(void) {
     local_persist bool initialized = false;
     local_persist f64 start_time = 0.0;
 
-    f64 current_time = get_time_seconds();
+    f64 current_time = get_ticks_f64();
     if(!initialized) {
         start_time = current_time;
         initialized = true;
@@ -67,9 +56,6 @@ internal f64 app_get_time(void) {
 
 int main(void) {
     int result = 0;
-    f64 const fps_log_interval_seconds = 2.0;
-    RGFW_window* window = nullptr;
-    bool renderer_initialized = false;
     AppState app_state = {};
 
     app_state.permanent_arena = arena_alloc();
@@ -82,7 +68,7 @@ int main(void) {
         app_state.transient_arena
     );
 
-    window = RGFW_createWindow("editor", 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    RGFW_window* window = RGFW_createWindow("Vulkan text editor", 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if(window == nullptr) {
         LOG_FATAL("RGFW_createWindow failed.");
         result = -1;
@@ -96,7 +82,8 @@ int main(void) {
         result = -1;
         goto cleanup;
     }
-    renderer_initialized = true;
+    app_state.running = true;
+    app_state.initialized = true;
     app_state.last_frame_time = app_get_time();
 
     while(!RGFW_window_shouldClose(window)) {
@@ -105,8 +92,7 @@ int main(void) {
         app_state.last_frame_time = current_time;
 
         editor_input_begin_frame(&app_state.input);
-        RGFW_event event = {};
-        bool should_exit = false;
+        RGFW_event event;
         while(RGFW_window_checkEvent(window, &event)) {
             switch(event.type) {
                 case RGFW_eventNone:
@@ -116,7 +102,7 @@ int main(void) {
                 case RGFW_keyPressed: {
                     if(event.key.value == RGFW_keyEscape) {
                         RGFW_window_setShouldClose(window, RGFW_TRUE);
-                        should_exit = true;
+                        app_state.running = false;
                         break;
                     }
 
@@ -145,41 +131,47 @@ int main(void) {
 
                 case RGFW_windowClose: {
                     RGFW_window_setShouldClose(window, RGFW_TRUE);
-                    should_exit = true;
+                    app_state.running = false;
                 } break;
             }
 
-            if(should_exit) {
+            if(!app_state.running) {
                 break;
             }
         }
 
-        if(should_exit) {
+        if(!app_state.running) {
             break;
         }
 
         editor_input_snapshot_window(&app_state.input, window, dt_for_frame);
 
         arena_clear(app_state.transient_arena);
-        editor_update_and_render(
-            &app_state.editor,
-            &app_state.input,
-            &app_state.render_cmds
-        );
 
         if(!begin_frame()) {
             result = -1;
             break;
         }
 
-        if(!render_drain_cmd_buffer(&app_state.render_cmds)) {
+        editor_update(
+            &app_state.editor,
+            &app_state.input,
+            &app_state.render_cmds
+        );
+
+        if(!render_submit(&app_state.render_cmds)) {
+            result = -1;
+            break;
+        }
+
+        if(!end_frame()) {
             result = -1;
             break;
         }
 
         app_state.fps_log_elapsed += dt_for_frame;
         app_state.fps_log_frame_count += 1;
-        if(app_state.fps_log_elapsed >= fps_log_interval_seconds) {
+        if(app_state.fps_log_elapsed >= FPS_LOG_INTERVAL_SECONDS) {
             f64 average_fps =
                 (f64)app_state.fps_log_frame_count / app_state.fps_log_elapsed;
             f64 average_ms_per_frame = 1000.0 / average_fps;
@@ -195,7 +187,7 @@ int main(void) {
     }
 
 cleanup:
-    if(renderer_initialized) {
+    if(app_state.initialized) {
         cleanup_vulkan();
     }
     if(window != nullptr) {

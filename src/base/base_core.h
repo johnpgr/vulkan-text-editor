@@ -1,6 +1,7 @@
 #pragma once
 
-#include <stdlib.h>
+#include <stdlib.h> // for abort
+#include <time.h> // for clock_gettime on Linux
 
 #include "base/base_types.h"
 #include "base/base_log.h"
@@ -116,6 +117,21 @@ inline bool align_up_pow2_u64(u64 value, u64 alignment, u64* out) {
 
     *out = sum & ~(alignment - 1);
     return false;
+}
+
+
+inline f64 get_ticks_f64(void) {
+#if OS_WINDOWS
+    LARGE_INTEGER counter = {};
+    LARGE_INTEGER frequency = {};
+    QueryPerformanceCounter(&counter);
+    QueryPerformanceFrequency(&frequency);
+    return (f64)counter.QuadPart / (f64)frequency.QuadPart;
+#else
+    timespec ts = {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (f64)ts.tv_sec + (f64)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
 #ifndef NDEBUG

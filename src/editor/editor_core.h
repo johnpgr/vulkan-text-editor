@@ -19,7 +19,8 @@ void init_editor_state(
     Arena* permanent_arena,
     Arena* transient_arena
 );
-void editor_update_and_render(
+
+void editor_update(
     EditorState* state,
     EditorInput* input,
     PushCmdBuffer* cmds

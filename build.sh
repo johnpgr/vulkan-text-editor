@@ -7,8 +7,50 @@ ROOT_DIR="$SCRIPT_DIR"
 BIN_DIR="$ROOT_DIR/bin"
 APP_MAIN="$ROOT_DIR/src/app/editor_main.cpp"
 RGFW_IMPL_CPP="$ROOT_DIR/src/third_party/rgfw/rgfw_impl.cpp"
-COMMAND="${1:-debug}"
-MODE="${2:-debug}"
+COMMAND=""
+MODE=""
+BUILD_SHADERS=0
+
+usage() {
+  printf 'usage: %s [debug|release|build|compdb] [debug|release] [shaders]\n' "$0" >&2
+  exit 1
+}
+
+parse_args() {
+  for arg in "$@"; do
+    case "$arg" in
+      shaders)
+        BUILD_SHADERS=1
+        ;;
+      build|compdb|__build)
+        if [[ -n "$COMMAND" ]]; then
+          usage
+        fi
+        COMMAND="$arg"
+        ;;
+      debug|release)
+        if [[ -z "$COMMAND" ]]; then
+          COMMAND="$arg"
+        elif [[ "$COMMAND" == "build" || "$COMMAND" == "compdb" || "$COMMAND" == "__build" ]] && [[ -z "$MODE" ]]; then
+          MODE="$arg"
+        else
+          usage
+        fi
+        ;;
+      *)
+        usage
+        ;;
+    esac
+  done
+
+  if [[ -z "$COMMAND" ]]; then
+    COMMAND=debug
+  fi
+
+  if [[ "$COMMAND" == "build" || "$COMMAND" == "compdb" || "$COMMAND" == "__build" ]] && [[ -z "$MODE" ]]; then
+    MODE=debug
+  fi
+}
 
 setup_platform() {
   case "$(uname -s)" in
@@ -45,8 +87,7 @@ setup_mode() {
       MODE_FLAGS=(-O2 -DNDEBUG)
       ;;
     *)
-      printf 'usage: %s [debug|release|build|compdb] [debug|release]\n' "$0" >&2
-      exit 1
+      usage
       ;;
   esac
 }
@@ -68,6 +109,7 @@ compile_shaders() {
   if [[ -n "$shader_compiler" ]]; then
     "$shader_compiler" -V "$shader_dir/sprite.vert" -o "$shader_out/sprite.vert.spv"
     "$shader_compiler" -V "$shader_dir/sprite.frag" -o "$shader_out/sprite.frag.spv"
+    printf 'compiled shaders\n'
     return
   fi
 
@@ -84,6 +126,7 @@ compile_shaders() {
 
     "$glslc_bin" "$shader_dir/sprite.vert" -o "$shader_out/sprite.vert.spv"
     "$glslc_bin" "$shader_dir/sprite.frag" -o "$shader_out/sprite.frag.spv"
+    printf 'compiled shaders\n'
     return
   fi
 
@@ -179,7 +222,9 @@ do_build() {
 
   CXX="${CXX:-clang++}"
   mkdir -p "$BIN_DIR"
-  compile_shaders
+  if [[ "$BUILD_SHADERS" -eq 1 ]]; then
+    compile_shaders
+  fi
   setup_toolchain
   collect_sources
 
@@ -205,6 +250,8 @@ do_build() {
   printf 'built %s/main\n' "$BIN_DIR"
 }
 
+parse_args "$@"
+
 case "$COMMAND" in
   build)
     do_build "$MODE"
@@ -216,7 +263,11 @@ case "$COMMAND" in
     BUILD_LOG="$(mktemp)"
     trap 'rm -f "$BUILD_LOG"' EXIT
 
-    PS4='' bash -x "$0" __build "$MODE" >"$BUILD_LOG" 2>&1
+    if [[ "$BUILD_SHADERS" -eq 1 ]]; then
+      PS4='' bash -x "$0" __build "$MODE" shaders >"$BUILD_LOG" 2>&1
+    else
+      PS4='' bash -x "$0" __build "$MODE" >"$BUILD_LOG" 2>&1
+    fi
     compiledb -f -o "$ROOT_DIR/compile_commands.json" -p "$BUILD_LOG"
     printf 'generated %s/compile_commands.json\n' "$ROOT_DIR"
     ;;
@@ -224,7 +275,6 @@ case "$COMMAND" in
     do_build "$MODE"
     ;;
   *)
-    printf 'usage: %s [debug|release|build|compdb] [debug|release]\n' "$0" >&2
-    exit 1
+    usage
     ;;
 esac
