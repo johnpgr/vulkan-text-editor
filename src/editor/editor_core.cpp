@@ -1,8 +1,6 @@
 #include "editor/editor_core.h"
 
-#define RGFW_IMPORT
-#include "third_party/rgfw/RGFW.h"
-#undef RGFW_IMPORT
+#include <GLFW/glfw3.h>
 
 void init_editor_state(
     EditorState* state,
@@ -81,7 +79,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
         ++event_index) {
         KeyEvent* event = input->key_events + event_index;
         switch(event->key) {
-            case RGFW_keyBackSpace: {
+            case GLFW_KEY_BACKSPACE: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0) {
                     u64 del_offset =
@@ -93,7 +91,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 }
             } break;
 
-            case RGFW_keyReturn: {
+            case GLFW_KEY_ENTER: {
                 u64 offset = cursor_to_offset(state);
                 u8 newline = '\n';
                 text_insert(state->document, offset, &newline, 1);
@@ -101,7 +99,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 state->dirty = true;
             } break;
 
-            case RGFW_keyLeft: {
+            case GLFW_KEY_LEFT: {
                 u64 offset = cursor_to_offset(state);
                 if(offset > 0)
                     set_cursor_from_offset(
@@ -111,7 +109,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case RGFW_keyRight: {
+            case GLFW_KEY_RIGHT: {
                 u64 offset = cursor_to_offset(state);
                 if(offset < text_content_size(state->document))
                     set_cursor_from_offset(
@@ -121,7 +119,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case RGFW_keyUp: {
+            case GLFW_KEY_UP: {
                 TextPoint pt =
                     text_offset_to_point(state->document, cursor_to_offset(state));
                 if(pt.line > 0) {
@@ -133,7 +131,7 @@ internal void move_cursor(EditorState* state, EditorInput* input) {
                 moved = true;
             } break;
 
-            case RGFW_keyDown: {
+            case GLFW_KEY_DOWN: {
                 TextPoint pt =
                     text_offset_to_point(state->document, cursor_to_offset(state));
                 u64 line_count = text_line_count(state->document);

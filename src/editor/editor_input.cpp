@@ -1,8 +1,6 @@
 #include "editor/editor_input.h"
 
-#define RGFW_IMPORT
-#include "third_party/rgfw/RGFW.h"
-#undef RGFW_IMPORT
+#include <GLFW/glfw3.h>
 
 void editor_input_begin_frame(EditorInput* input) {
     ASSERT(input != nullptr, "Editor input must not be null!");
@@ -14,7 +12,7 @@ void editor_input_begin_frame(EditorInput* input) {
 
 void editor_input_snapshot_window(
     EditorInput* input,
-    RGFW_window* window,
+    GLFWwindow* window,
     f32 dt_for_frame
 ) {
     ASSERT(input != nullptr, "Editor input must not be null!");
@@ -22,12 +20,12 @@ void editor_input_snapshot_window(
 
     i32 framebuffer_width = 0;
     i32 framebuffer_height = 0;
-    RGFW_window_getSizeInPixels(window, &framebuffer_width, &framebuffer_height);
-    i32 mouse_x = 0;
-    i32 mouse_y = 0;
-    RGFW_window_getMouse(window, &mouse_x, &mouse_y);
-    input->mouse_x = (f64)mouse_x;
-    input->mouse_y = (f64)mouse_y;
+    glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+    f64 mouse_x = 0.0;
+    f64 mouse_y = 0.0;
+    glfwGetCursorPos(window, &mouse_x, &mouse_y);
+    input->mouse_x = mouse_x;
+    input->mouse_y = mouse_y;
 
     input->window_width = framebuffer_width > 0 ? (u32)framebuffer_width : 0;
     input->window_height = framebuffer_height > 0 ? (u32)framebuffer_height : 0;

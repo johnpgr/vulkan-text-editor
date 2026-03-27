@@ -2,7 +2,7 @@
 
 #include "base/base_core.h"
 
-struct RGFW_window;
+struct GLFWwindow;
 
 #define MAX_KEY_EVENTS 128
 #define MAX_CHAR_INPUT_COUNT 64
@@ -30,7 +30,7 @@ struct EditorInput {
 void editor_input_begin_frame(EditorInput* input);
 void editor_input_snapshot_window(
     EditorInput* input,
-    RGFW_window* window,
+    GLFWwindow* window,
     f32 dt_for_frame
 );
 void editor_input_push_key_event(

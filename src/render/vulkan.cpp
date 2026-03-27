@@ -1,10 +1,7 @@
 #include "render/vulkan.h"
 
-#define RGFW_VULKAN
-#define RGFW_IMPORT
-#include "third_party/rgfw/RGFW.h"
-#undef RGFW_IMPORT
-#undef RGFW_VULKAN
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 #include "base/base_arena.h"
 #include "base/base_log.h"
@@ -24,7 +21,7 @@ struct VulkanSpritePushConstants {
 
 struct VulkanState {
     Arena* arena;
-    RGFW_window* window;
+    GLFWwindow* window;
 
     VkInstance instance;
     VkApplicationInfo app_info;
@@ -147,10 +144,10 @@ internal char const** get_instance_extensions(
         "Extension count output must not be null!"
     );
 
-    size_t rgfw_extension_count = 0;
-    char const** rgfw_extensions =
-        RGFW_getRequiredInstanceExtensions_Vulkan(&rgfw_extension_count);
-    if(rgfw_extensions == nullptr || rgfw_extension_count == 0) {
+    u32 glfw_extension_count = 0;
+    char const** glfw_extensions =
+        glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    if(glfw_extensions == nullptr || glfw_extension_count == 0) {
         *out_extension_count = 0;
         return nullptr;
     }
@@ -169,12 +166,12 @@ internal char const** get_instance_extensions(
     }
 #endif
 
-    u32 extension_count = (u32)rgfw_extension_count + extra_extension_count;
+    u32 extension_count = glfw_extension_count + extra_extension_count;
     char const** extensions = push_array(arena, char const*, extension_count);
 
     u32 extension_index = 0;
-    for(size_t rgfw_index = 0; rgfw_index < rgfw_extension_count; ++rgfw_index) {
-        extensions[extension_index++] = rgfw_extensions[rgfw_index];
+    for(u32 glfw_index = 0; glfw_index < glfw_extension_count; ++glfw_index) {
+        extensions[extension_index++] = glfw_extensions[glfw_index];
     }
 
     if(has_instance_extension(
@@ -594,7 +591,7 @@ internal VkExtent2D choose_swapchain_extent(SwapchainSupportInfo* support) {
 
     i32 framebuffer_width = 0;
     i32 framebuffer_height = 0;
-    RGFW_window_getSizeInPixels(
+    glfwGetFramebufferSize(
         vk_state.window,
         &framebuffer_width,
         &framebuffer_height
@@ -879,17 +876,17 @@ internal bool wait_for_nonzero_framebuffer(void) {
     i32 framebuffer_height = 0;
 
     while(framebuffer_width == 0 || framebuffer_height == 0) {
-        if(RGFW_window_shouldClose(vk_state.window)) {
+        if(glfwWindowShouldClose(vk_state.window)) {
             return false;
         }
 
-        RGFW_window_getSizeInPixels(
+        glfwGetFramebufferSize(
             vk_state.window,
             &framebuffer_width,
             &framebuffer_height
         );
         if(framebuffer_width == 0 || framebuffer_height == 0) {
-            RGFW_waitForEvent(RGFW_eventWaitNext);
+            glfwWaitEvents();
         }
     }
 
@@ -1374,7 +1371,7 @@ bool begin_frame(void) {
 
     i32 framebuffer_width = 0;
     i32 framebuffer_height = 0;
-    RGFW_window_getSizeInPixels(
+    glfwGetFramebufferSize(
         vk_state.window,
         &framebuffer_width,
         &framebuffer_height
@@ -1657,7 +1654,7 @@ void cleanup_vulkan(void) {
     vk_state = {};
 }
 
-bool init_vulkan(Arena* arena, RGFW_window* window) {
+bool init_vulkan(Arena* arena, GLFWwindow* window) {
     ASSERT(arena != nullptr, "Vulkan arena must not be null!");
     ASSERT(window != nullptr, "Vulkan window must not be null!");
 
@@ -1735,12 +1732,13 @@ bool init_vulkan(Arena* arena, RGFW_window* window) {
     }
 #endif
 
-    if(RGFW_window_createSurface_Vulkan(
-           window,
+    if(glfwCreateWindowSurface(
            vk_state.instance,
+           window,
+           nullptr,
            &vk_state.surface
        ) != VK_SUCCESS) {
-        LOG_FATAL("RGFW_window_createSurface_Vulkan failed.");
+        LOG_FATAL("glfwCreateWindowSurface failed.");
         goto cleanup;
     }
 

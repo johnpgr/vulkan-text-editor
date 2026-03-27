@@ -2,11 +2,8 @@
 #include "base/base_mod.h"
 #include "os/os_mod.h"
 
-#define RGFW_VULKAN
-#define RGFW_IMPORT
-#include "third_party/rgfw/RGFW.h"
-#undef RGFW_IMPORT
-#undef RGFW_VULKAN
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 #if OS_WINDOWS
 #define NOMINMAX
@@ -54,9 +51,42 @@ internal f64 app_get_time(void) {
     return current_time - start_time;
 }
 
+internal void glfw_key_callback(GLFWwindow* window, int key, int /*scancode*/, int action, int mods) {
+    AppState* app = (AppState*)glfwGetWindowUserPointer(window);
+    if(action == GLFW_PRESS || action == GLFW_REPEAT) {
+        if(key == GLFW_KEY_ESCAPE) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            app->running = false;
+            return;
+        }
+        editor_input_push_key_event(
+            &app->input, key, mods,
+            action == GLFW_PRESS,
+            action == GLFW_REPEAT
+        );
+    }
+}
+
+internal void glfw_char_callback(GLFWwindow* window, unsigned int codepoint) {
+    AppState* app = (AppState*)glfwGetWindowUserPointer(window);
+    editor_input_push_char(&app->input, codepoint);
+}
+
+internal void glfw_scroll_callback(GLFWwindow* window, double /*xoffset*/, double yoffset) {
+    AppState* app = (AppState*)glfwGetWindowUserPointer(window);
+    editor_input_push_scroll(&app->input, yoffset);
+}
+
+internal void glfw_window_close_callback(GLFWwindow* window) {
+    AppState* app = (AppState*)glfwGetWindowUserPointer(window);
+    app->running = false;
+}
+
 int main(void) {
     int result = 0;
     AppState app_state = {};
+    GLFWwindow* window = nullptr;
+    bool glfw_initialized = false;
 
     app_state.permanent_arena = arena_alloc();
     app_state.transient_arena = arena_alloc();
@@ -68,15 +98,26 @@ int main(void) {
         app_state.transient_arena
     );
 
-    RGFW_window* window = RGFW_createWindow("Vulkan text editor", 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    if(!glfwInit()) {
+        LOG_FATAL("glfwInit failed.");
+        result = -1;
+        goto cleanup;
+    }
+    glfw_initialized = true;
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Vulkan text editor", nullptr, nullptr);
     if(window == nullptr) {
-        LOG_FATAL("RGFW_createWindow failed.");
+        LOG_FATAL("glfwCreateWindow failed.");
         result = -1;
         goto cleanup;
     }
 
-    RGFW_window_setExitKey(window, RGFW_keyNULL);
-    RGFW_window_setEnabledEvents(window, RGFW_allEventFlags);
+    glfwSetWindowUserPointer(window, &app_state);
+    glfwSetKeyCallback(window, glfw_key_callback);
+    glfwSetCharCallback(window, glfw_char_callback);
+    glfwSetScrollCallback(window, glfw_scroll_callback);
+    glfwSetWindowCloseCallback(window, glfw_window_close_callback);
 
     if(!init_vulkan(app_state.permanent_arena, window)) {
         result = -1;
@@ -86,59 +127,13 @@ int main(void) {
     app_state.initialized = true;
     app_state.last_frame_time = app_get_time();
 
-    while(!RGFW_window_shouldClose(window)) {
+    while(!glfwWindowShouldClose(window)) {
         f64 current_time = app_get_time();
         f32 dt_for_frame = (f32)(current_time - app_state.last_frame_time);
         app_state.last_frame_time = current_time;
 
         editor_input_begin_frame(&app_state.input);
-        RGFW_event event;
-        while(RGFW_window_checkEvent(window, &event)) {
-            switch(event.type) {
-                case RGFW_eventNone:
-                case RGFW_keyReleased:
-                    break;
-
-                case RGFW_keyPressed: {
-                    if(event.key.value == RGFW_keyEscape) {
-                        RGFW_window_setShouldClose(window, RGFW_TRUE);
-                        app_state.running = false;
-                        break;
-                    }
-
-                    editor_input_push_key_event(
-                        &app_state.input,
-                        (i32)event.key.value,
-                        (i32)event.key.mod,
-                        true,
-                        event.key.repeat
-                    );
-                } break;
-
-                case RGFW_keyChar: {
-                    editor_input_push_char(
-                        &app_state.input,
-                        event.keyChar.value
-                    );
-                } break;
-
-                case RGFW_mouseScroll: {
-                    editor_input_push_scroll(
-                        &app_state.input,
-                        event.delta.y
-                    );
-                } break;
-
-                case RGFW_windowClose: {
-                    RGFW_window_setShouldClose(window, RGFW_TRUE);
-                    app_state.running = false;
-                } break;
-            }
-
-            if(!app_state.running) {
-                break;
-            }
-        }
+        glfwPollEvents();
 
         if(!app_state.running) {
             break;
@@ -191,7 +186,10 @@ cleanup:
         cleanup_vulkan();
     }
     if(window != nullptr) {
-        RGFW_window_close(window);
+        glfwDestroyWindow(window);
+    }
+    if(glfw_initialized) {
+        glfwTerminate();
     }
     arena_release(app_state.transient_arena);
     arena_release(app_state.permanent_arena);
